@@ -53,6 +53,8 @@ export function render(app) {
     <div class="tres"><div><label for="pRebP">Premium $</label><input id="pRebP" type="number" inputmode="decimal" value="${cfg.precios.premium}"></div>
       <div><label for="pMolP">Molde prem. $</label><input id="pMolP" type="number" inputmode="decimal" value="${cfg.precios.moldePremium}"></div>
       <div><label for="pRapP">Rappi prem. $</label><input id="pRapP" type="number" inputmode="decimal" value="${cfg.precios.rappiPremium ?? cfg.precios.premium}"></div></div>
+    <div class="tres"><div><label for="pPromo">Promo $</label><input id="pPromo" type="number" inputmode="decimal" value="${cfg.precios.promo ?? ''}" placeholder="sin promo"></div><div></div><div></div></div>
+    <div class="smallnote">Promo: precio de la rebanada sencilla para vecinos del Andador y amigos. Se elige al vender o al capturar el pedido. Vacío = sin promo.</div>
     <div class="smallnote">Cambia el precio de todos los sabores de un jalón. Para un solo sabor: Recetario → el sabor → Editar. Los pedidos ya capturados conservan su precio.</div>
     <div class="acciones"><button class="secondary" data-accion="ajustes.guardarPrecios">Aplicar a todos los sabores</button></div>
   </div>
@@ -113,7 +115,10 @@ export const acciones = {
     const nuevos = { rebanada: n('pReb'), premium: n('pRebP'), molde: n('pMol'), moldePremium: n('pMolP'), rappi: n('pRap'), rappiPremium: n('pRapP') };
     if (Object.values(nuevos).some(v => !(v > 0))) return app.toast('Todos los precios deben ser mayores a cero');
     if (nuevos.premium <= nuevos.rebanada) return app.toast('El precio premium debe ser mayor al sencillo');
+    const promo = document.getElementById('pPromo').value === '' ? null : n('pPromo');
+    if (promo !== null && !(promo > 0 && promo < nuevos.rebanada)) return app.toast('El promo debe ser mayor a cero y menor que la rebanada');
     const k = await aplicarPreciosDeLista(app.base, nuevos);
+    await app.base.guardar('config', { ...app.cfg(), precios: { ...app.cfg().precios, promo } });
     app.render(); app.toast(`Precios aplicados a ${k / 3} sabores`);
   },
   exportar(app) {

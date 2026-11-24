@@ -39,6 +39,7 @@ export const app = {
     return this.base.lista('recetas').filter(r => r.tipo === 'sabor' && (incluirArchivadas || !r.archivada)).sort((a, b) => a.num - b.num);
   },
   recetasPorId() { return this.base.porId('recetas'); },
+  otros() { return this.base.lista('productos').filter(p => p.linea === 'otros' && p.activo !== false); },
   producto(recetaId, presentacion) { return this.base.lista('productos').find(p => p.recetaId === recetaId && p.presentacion === presentacion) || null; },
   letra() { const d = this.cfg().dispositivos || {}; return (d[this.base.deviceId] && d[this.base.deviceId].letra) || this.base.meta.letra || 'A'; },
   hoy() { return ymd(); },
@@ -108,7 +109,7 @@ export const app = {
     if (!this.sync.transporte) { if (avisar) this.toast('Sincronización sin configurar: los datos viven solo en este equipo'); return this.sync.resumen(); }
     const r = await this.sync.sincronizar();
     if (r.fase === 'ok') {
-      await this.registrarDispositivo(); await migrar(this.base);
+      await this.registrarDispositivo(); await migrar(this.base, { semilla: () => this.semilla() });
       // Si al registrarse o migrar cambió algo (la letra de folio, por ejemplo), se sube de una vez: así el otro equipo lo ve antes de elegir la suya.
       if (this.base.pendientes().length) await this.sync.sincronizar();
     }
@@ -178,7 +179,7 @@ async function arrancar() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { app.sincronizar(); app.renderSuave(); } });
   setInterval(() => { if (!document.hidden && navigator.onLine) app.sincronizar(); }, 30000);
 
-  await migrar(app.base);
+  await migrar(app.base, { semilla: () => app.semilla() });
   app.render();
   app.sincronizar();
   if (sinDisco) app.toast('Este navegador no deja guardar datos: lo que captures se pierde al cerrar.', 8000);

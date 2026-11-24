@@ -23,8 +23,14 @@ function tablerosHtml(app, u) {
   const desde = u.semanas ? sumarDias(hoy, -7 * u.semanas + 1) : null;
   const t = an.tableros(d, desde, hoy), nom = id => (R.get(id) ? R.get(id).nombre : 'Sabor eliminado');
   let h = `<div class="chips">${[[4, '4 semanas'], [12, '12 semanas'], [0, 'Todo']].map(([n, x]) => `<button class="chip ${u.semanas === n ? 'on' : ''}" data-accion="ventas.periodo" data-n="${n}">${x}</button>`).join('')}</div>`;
-  if (!t.total.rebanadas) return h + `<div class="empty"><div class="big">Sin ventas en este periodo</div>Aquí aparecen los pedidos por fecha de entrega y las ventas de mostrador. Los datos de prueba no cuentan.</div>`;
-  h += `<div class="grid2"><div class="stat"><div class="n">${t.total.rebanadas}</div><div class="l">Rebanadas vendidas</div></div><div class="stat"><div class="n">${dinero(Math.round(t.total.ingreso))}</div><div class="l">Venta · ${dinero(Math.round(t.total.ingreso / t.total.rebanadas))} por rebanada</div></div></div>`;
+  if (!t.total.rebanadas && !t.otros.length) return h + `<div class="empty"><div class="big">Sin ventas en este periodo</div>Aquí aparecen los pedidos por fecha de entrega y las ventas de mostrador. Los datos de prueba no cuentan.</div>`;
+  h += `<div class="grid2"><div class="stat"><div class="n">${t.total.rebanadas}</div><div class="l">Rebanadas vendidas</div></div><div class="stat"><div class="n">${dinero(Math.round(t.total.ingreso))}</div><div class="l">Venta de tiramisú${t.total.rebanadas ? ` · ${dinero(Math.round(t.total.ingreso / t.total.rebanadas))} por rebanada` : ''}</div></div></div>`;
+  if (t.promo.rebanadas) h += `<div class="mini" style="margin-top:8px"><b>Precio promo:</b> ${t.promo.rebanadas} ${t.promo.rebanadas === 1 ? 'rebanada' : 'rebanadas'} (${Math.round(t.promo.rebanadas / t.total.rebanadas * 100)}% del total) · dejaste de cobrar ${dinero(Math.round(t.promo.descuento))} contra el precio de lista.</div>`;
+  if (t.otros.length) {
+    const P = app.base.porId('productos'), nomO = id => (P.get(id) ? P.get(id).nombre : 'Producto eliminado');
+    h += `<div class="taskday"><h3>Otras líneas · en prueba</h3>${barras(t.otros, f => f.ingreso, f => nomO(f.productoId), f => `${f.piezas} · ${dinero(Math.round(f.ingreso))} · utilidad ${dinero(Math.round(f.utilidad))}`)}
+      <div class="mini">Utilidad con el costo de ficha (ya trae buffer y empaque). En el combo solo cuenta el café: la rebanada va en su sabor.</div></div>`;
+  }
   // rotación y venta esperada
   const oper = app.sabores().filter(r => r.menu === 'operativo'), rot = an.rotacion(d, oper, hoy);
   if (rot.candidatos.length) h += `<div class="alert"><div><b>Rotación:</b> ${rot.candidatos.map(nom).map(esc).join(', ')} quedó dos veces o más en último lugar en los últimos ${rot.fines} fines de semana. Según la regla del recetario, le toca salir del menú operativo.</div></div>`;

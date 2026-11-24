@@ -41,6 +41,12 @@ function saboresHtml(app) {
   let h = `<div class="taskday"><h3>Menú operativo · ${oper.length} sabores · promedio ${dinero(prom)} por molde</h3>${oper.map(r => filaSabor(app, r)).join('') || '<div class="mini" style="padding:12px 0">Ningún sabor en el operativo.</div>'}</div>
     <div class="taskday"><h3>Menú de reserva · ${res.length} sabores</h3>${res.map(r => filaSabor(app, r)).join('')}</div>`;
   if (arch.length) h += `<div class="taskday"><h3>Archivadas · ${arch.length}</h3>${arch.map(r => filaSabor(app, r)).join('')}</div>`;
+  const otros = app.base.lista('productos').filter(p => p.linea === 'otros');
+  if (otros.length) h += `<div class="taskday"><h3>Otras líneas · en prueba</h3>${otros.map(p => {
+    const pr = p.precios.Mostrador ?? Object.values(p.precios)[0] ?? 0, m = pr ? Math.round((pr - (p.costo || 0)) / pr * 100) : 0;
+    return `<div class="recrow"><div class="crece"><b>${esc(p.nombre)}</b><span>${esc(p.presentacion || '')}${p.precios.Rappi ? ` · Rappi ${dinero(p.precios.Rappi)}` : ''}${p.conRebanada ? ' · + 1 rebanada' : ''}</span></div>
+      <div class="der"><input type="number" inputmode="decimal" min="0" value="${pr}" style="width:84px;padding:8px;text-align:right" data-entrada="recetario.precioOtro" data-id="${esc(p.id)}" aria-label="Precio de ${esc(p.nombre)}"><small>costo ${dinero(p.costo || 0)}${p.conRebanada ? ' + reb.' : ` · ${m}%`}</small></div></div>`;
+  }).join('')}<div class="mini">Costos de las fichas de MVP, con buffer y empaque. Cambia el precio aquí; aplica a mostrador, eventos y WhatsApp.</div></div>`;
   h += `<div class="mini">Costo por molde con ingredientes, sin buffer, igual que en Recetario_KUMAI v${esc(app.cfg().recetarioVersion || '—')}. El margen es el de la rebanada en venta directa.</div>
     <div class="acciones"><button class="secondary" data-accion="recetario.nueva">Nueva receta</button>
     <label class="secondary" style="display:block;text-align:center;border:1.5px solid var(--canela);border-radius:3px;padding:13px 16px;margin:0;font-size:12px;color:var(--chocolate);cursor:pointer;letter-spacing:.13em">Importar Recetario_KUMAI.md
@@ -288,6 +294,12 @@ export const acciones = {
 };
 
 export const entradas = {
+  async precioOtro(app, d, el) {
+    const v = Number(el.value), p = app.base.get('productos', d.id);
+    if (!p || !(v > 0)) return;
+    const precios = { ...p.precios, Mostrador: v, Evento: v, WhatsApp: v };
+    await app.base.guardar('productos', { ...p, precios });
+  },
   campo: (app, d, el) => { app.ui.recForm.r[d.campo] = el.value; },
   check: (app, d, el) => { app.ui.recForm.r[d.campo] = el.checked; },
   numero: (app, d, el) => { app.ui.recForm.r[d.campo] = el.value === '' ? null : Number(el.value); if (d.campo === 'grenetinaG') refrescarTotal(app); },

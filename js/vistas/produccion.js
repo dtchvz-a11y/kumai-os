@@ -1,6 +1,6 @@
 // KUMAI OS · Producción: plan del motor, vitrina, sabores de la semana y lotes
-import { esc, sumarDias, fechaCorta, fechaHumana, diasEntre } from '../util.js';
-import { lunesDe } from '../modelo.js';
+import { esc, dinero, sumarDias, fechaCorta, fechaHumana, diasEntre } from '../util.js';
+import { lunesDe, precioPromo } from '../modelo.js';
 import { parametros, techoSemanal, minutosSemana, saboresDeSemana, horas, claveDia, vidaVenta } from '../motor.js';
 import * as op from '../operacion.js';
 import { eventoActivo } from '../analisis.js';
@@ -22,6 +22,14 @@ const estado = app => app.ui.prod || (app.ui.prod = { semana: 'esta' });
 const h1 = min => horas(min) + ' h';
 const TIPO = { crema: 'Batch de crema base', horneado: 'Hornear soletas', armado: 'Armar', lavado: 'Lavado del horneado' };
 const precioMostrador = (app, id) => ((app.producto(id, 'rebanada') || { precios: {} }).precios.Mostrador) || 0;
+const promoDe = (app, id) => precioPromo(app.cfg().precios, precioMostrador(app, id));
+const precioOtro = p => p.precios.Mostrador ?? Object.values(p.precios)[0] ?? 0;
+function otrosHtml(app) {
+  const os = app.otros();
+  if (!os.length) return '';
+  return `<div class="taskday"><h3>Otras líneas · en prueba</h3><div class="mini">Cada toque es 1 pieza vendida en el punto de hoy. El combo saca una rebanada de la vitrina.</div>
+    <div class="chips" style="margin-top:8px">${os.map(p => `<button class="chip" data-accion="produccion.venderOtro" data-id="${esc(p.id)}">${esc(p.nombre)} · ${dinero(precioOtro(p))}</button>`).join('')}</div></div>`;
+}
 
 export function textoTarea(app, t) {
   const R = app.recetasPorId();
@@ -69,8 +77,9 @@ export function render(app) {
   h += `<div class="taskday"><h3>Vitrina · ${total} rebanadas${obj ? ` · mínimo de hoy ${obj}` : ''}</h3>
     <label for="pvSel">Hoy vendo en</label><select id="pvSel" data-entrada="produccion.punto">${puntos(app).map(x => `<option ${x === pv ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
     ${vit.length ? vit.map(x => `<div class="saborrow"><div class="crece"><b>${esc(x.receta.nombre)}</b><span>${x.hoy} ${x.hoy === 1 ? 'rebanada' : 'rebanadas'}${x.vence ? ` · ${x.vence === hoy ? 'último día' : 'hasta ' + fechaCorta(x.vence)}` : ''}${x.manana ? ` · ${x.manana} salen mañana` : ''}</span></div>
-      <button class="secondary" ${x.hoy + x.manana ? '' : 'disabled'} data-accion="produccion.vender" data-id="${esc(x.recetaId)}">Vender 1</button></div>`).join('') : '<div class="mini" style="padding:12px 0">Sin rebanadas registradas. Al marcar un armado como hecho aparecen aquí.</div>'}
+      <button class="secondary" ${x.hoy + x.manana ? '' : 'disabled'} data-accion="produccion.vender" data-id="${esc(x.recetaId)}">Vender 1</button>${promoDe(app, x.recetaId) ? `<button class="secondary" style="margin-left:6px" ${x.hoy + x.manana ? '' : 'disabled'} data-accion="produccion.venderPromo" data-id="${esc(x.recetaId)}" aria-label="Vender 1 de ${esc(x.receta.nombre)} a precio promo">A ${dinero(promoDe(app, x.recetaId))}</button>` : ''}</div>`).join('') : '<div class="mini" style="padding:12px 0">Sin rebanadas registradas. Al marcar un armado como hecho aparecen aquí.</div>'}
     <div class="acciones h"><button class="secondary" data-accion="produccion.conteo">Conteo al cierre</button><button class="secondary" data-accion="produccion.fuera">Registrar producción</button></div></div>`;
+  h += otrosHtml(app);
 
   // ----- sabores de la semana -----
   const lunesSel = u.semana === 'esta' ? lunes : sumarDias(lunes, 7);
@@ -143,6 +152,30 @@ export const acciones = {
   async vender(app, d) {
     await op.venderMostrador(app.base, d.id, 1, precioMostrador(app, d.id), app.hoy(), puntoDeHoy(app));
     app.render(); app.toast('Venta registrada');
+  },
+  async venderPromo(app, d) {
+    const lista = precioMostrador(app, d.id), promo = promoDe(app, d.id);
+    if (!promo) return app.toast('Ese sabor no tiene precio promo');
+    await op.venderMostrador(app.base, d.id, 1, promo, app.hoy(), puntoDeHoy(app), { lista });
+    app.render(); app.toast(`Venta a precio promo: ${dinero(promo)}`);
+  },
+  async venderOtro(app, d) {
+    const p = app.base.get('productos', d.id);
+    if (!p) return;
+    if (!p.conRebanada) {
+      await op.venderOtro(app.base, p, 1, precioOtro(p), app.hoy(), puntoDeHoy(app));
+      app.render(); return app.toast(`${p.nombre}: vendido`);
+    }
+    const vit = op.stockVitrina(app.base, app.hoy()).filter(x => x.hoy + x.manana > 0);
+    if (!vit.length) return app.toast('El combo lleva una rebanada y la vitrina está vacía');
+    app.modal(`<h3>${esc(p.nombre)} · ${dinero(precioOtro(p))}</h3><div class="mini">¿De qué sabor es la rebanada?</div>
+      ${vit.map(x => `<div class="saborrow"><div class="crece"><b>${esc(x.receta.nombre)}</b><span>${x.hoy + x.manana} en vitrina</span></div><button class="secondary" data-accion="produccion.venderCombo" data-id="${esc(p.id)}" data-receta="${esc(x.recetaId)}">Este</button></div>`).join('')}
+      <div class="modal-actions"><button class="secondary" data-accion="app.cerrarModal">Cancelar</button></div>`);
+  },
+  async venderCombo(app, d) {
+    const p = app.base.get('productos', d.id);
+    await op.venderOtro(app.base, p, 1, precioOtro(p), app.hoy(), puntoDeHoy(app), { recetaId: d.receta, precioRebanada: precioMostrador(app, d.receta) });
+    app.cerrarModal(); app.render(); app.toast('Combo vendido');
   },
   conteo(app) {
     const vit = op.stockVitrina(app.base, app.hoy());

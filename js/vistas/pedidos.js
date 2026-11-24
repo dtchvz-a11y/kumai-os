@@ -2,7 +2,7 @@
 import { esc, dinero, ymd, sumarDias, fechaCorta, fechaLarga, fechaHumana, deYmd } from '../util.js';
 import {
   CANALES, ESTATUS, ESTATUS_ETIQUETA, PRESENTACIONES, siguienteFolio, totalPedido, totalLineas, pagado, saldo, estadoPago,
-  moldesPedido, pedidoActivo, pedidoAbierto, textoLinea, normalizarTelefono,
+  moldesPedido, pedidoActivo, pedidoAbierto, textoLinea, normalizarTelefono, precioPromo,
 } from '../modelo.js';
 import { mensajeConfirmacion, mensajeRecordatorio, mensajeSaldo, enlaceWhatsApp } from '../plantillas.js';
 import { cabePedido } from '../motor.js';
@@ -105,6 +105,7 @@ function formHtml(app) {
     <div class="dos"><div><label for="fNombre">Cliente</label><input id="fNombre" list="listaClientes" autocomplete="off" value="${esc(f.clienteNombre)}" data-entrada="pedidos.nombre" placeholder="${f.canal === 'Rappi' || f.canal === 'Mostrador' ? f.canal : 'Nombre'}">
       <datalist id="listaClientes">${clientes.map(c => `<option value="${esc(c.nombre)}">`).join('')}</datalist></div>
       <div><label for="fTel">WhatsApp</label><input id="fTel" type="tel" inputmode="tel" value="${esc(f.telefono)}" data-entrada="pedidos.campo" data-campo="telefono" placeholder="449…"></div></div>
+    <div id="fPromoBox">${promoHtml(app)}</div>
     ${f.canal === 'Evento' && eventos.length ? `<label for="fEvento">Evento</label><select id="fEvento" data-entrada="pedidos.campo" data-campo="eventoId"><option value="">Sin ligar</option>${eventos.map(e => `<option value="${esc(e.id)}" ${f.eventoId === e.id ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('')}</select>` : ''}
     <label>Entrega</label>
     <div class="chips" id="fFechas">${rapidas.map(([d, t]) => `<button type="button" class="chip ${f.fecha === d ? 'on' : ''}" data-accion="pedidos.formFecha" data-fecha="${d}">${t}</button>`).join('')}</div>
@@ -119,6 +120,21 @@ function formHtml(app) {
     <div class="modal-actions"><button class="secondary" data-accion="app.cerrarModal">Cancelar</button><button class="primary" data-accion="pedidos.guardar">Guardar pedido</button></div>`;
 }
 
+function promoHtml(app) {
+  const f = app.ui.form, promo = (app.cfg().precios || {}).promo;
+  if (f.canal === 'Rappi' || !promo) return '';
+  return `<div class="chips" style="margin-top:12px"><button type="button" class="chip ${f.promo ? 'on' : ''}" data-accion="pedidos.formPromo">Precio promo ${dinero(promo)} · Andador y amigos</button></div>
+    ${f.promo ? `<label style="text-transform:none;letter-spacing:0;font-size:14px;color:var(--tinta);margin:8px 0 0"><input type="checkbox" id="fAmigo" ${f.amigo ? 'checked' : ''} data-entrada="pedidos.amigo" style="width:auto;margin-right:10px">Recordar como amigo/a: el promo se pone solo en sus pedidos</label>
+      <div class="smallnote">Solo rebanadas sencillas. Premium y moldes completos quedan a su precio.</div>` : ''}`;
+}
+
+/** Precio de una línea: el de lista, o el promo si está activo y aplica (rebanada sencilla, fuera de Rappi). */
+function precioLinea(app, recetaId, pres, canal, promoActivo) {
+  const lista = precioDe(app, recetaId, pres, canal);
+  const promo = promoActivo && pres === 'rebanada' && canal !== 'Rappi' ? precioPromo(app.cfg().precios, lista) : null;
+  return { lista, precio: promo ?? lista, promo: promo !== null };
+}
+
 function precioDe(app, recetaId, pres, canal) {
   const p = app.producto(recetaId, pres);
   if (!p) return 0;
@@ -130,7 +146,11 @@ function lineasDeForm(app) {
   for (const [k, n] of Object.entries(f.cant)) {
     if (!n) continue;
     const [recetaId, presentacion] = k.split('|');
-    out.push({ recetaId, presentacion, cantidad: n, precioUnit: f.precioFijo[k] ?? precioDe(app, recetaId, presentacion, f.canal) });
+    const x = precioLinea(app, recetaId, presentacion, f.canal, f.promo);
+    const precioUnit = f.precioFijo[k] ?? x.precio;
+    const l = { recetaId, presentacion, cantidad: n, precioUnit };
+    if (f.promo && precioUnit < x.lista && presentacion === 'rebanada') Object.assign(l, { promo: true, precioLista: x.lista });
+    out.push(l);
   }
   return out;
 }
@@ -144,7 +164,7 @@ function saboresHtml(app) {
   h += sabores.map(r => {
     const n = f.cant[r.id + '|' + pres] || 0;
     const otras = Object.entries(f.cant).filter(([k, v]) => v && k.startsWith(r.id + '|') && !k.endsWith('|' + pres)).map(([k, v]) => `${v} ${PRESENTACIONES[k.split('|')[1]].plural}`);
-    return `<div class="saborrow"><div class="crece"><b>${esc(r.nombre)}</b><span>${dinero(precioDe(app, r.id, pres, f.canal))}${r.validacion ? ' · en validación' : ''}${otras.length ? ' · + ' + esc(otras.join(', ')) : ''}</span></div>
+    return `<div class="saborrow"><div class="crece"><b>${esc(r.nombre)}</b><span>${dinero(f.precioFijo[r.id + '|' + pres] ?? precioLinea(app, r.id, pres, f.canal, f.promo).precio)}${r.validacion ? ' · en validación' : ''}${otras.length ? ' · + ' + esc(otras.join(', ')) : ''}</span></div>
       <div class="paso"><button type="button" data-accion="pedidos.menos" data-id="${r.id}" aria-label="Quitar ${esc(r.nombre)}">−</button><output class="${n ? '' : 'cero'}">${n}</output><button type="button" data-accion="pedidos.mas" data-id="${r.id}" aria-label="Agregar ${esc(r.nombre)}">+</button></div></div>`;
   }).join('');
   h += `<button type="button" class="ghost" data-accion="pedidos.verReserva">${f.verReserva ? 'Ver solo el menú operativo' : 'Ver también el menú de reserva'}</button>`;
@@ -180,11 +200,13 @@ function abrirForm(app, p = null, fecha = null) {
   const f = app.ui.form = {
     id: p ? p.id : null, folio: p ? p.folio : '', clienteNombre: p ? p.clienteNombre : '', telefono: '', canal: p ? p.canal : 'WhatsApp',
     fecha: p ? p.fechaEntrega : (fecha || sumarDias(hoy, 1)), hora: p ? (p.horaEntrega || '') : '', pres: 'rebanada', cant: {}, precioFijo: {},
+    promo: !!(p && p.lineas.some(l => l.promo)), amigo: false, amigoTocado: false,
     envio: p && p.envio ? p.envio : '', eventoId: p ? (p.eventoId || '') : '', anticipo: '', notas: p ? (p.notas || '') : '', verReserva: false, prueba: !!(p && p.prueba),
   };
   if (p) {
     const c = p.clienteId && app.base.get('clientes', p.clienteId);
     f.telefono = c ? (c.telefono || '') : '';
+    f.amigo = !!(c && c.amigo);
     for (const l of p.lineas) { const k = l.recetaId + '|' + l.presentacion; f.cant[k] = l.cantidad; f.precioFijo[k] = l.precioUnit; }
   }
   app.modal(formHtml(app));
@@ -195,7 +217,8 @@ async function clienteDe(app, f) {
   const tel = normalizarTelefono(f.telefono);
   const clientes = app.base.lista('clientes');
   let c = (tel && clientes.find(x => normalizarTelefono(x.telefono) === tel)) || clientes.find(x => x.nombre.trim().toLowerCase() === nombre.toLowerCase());
-  if (!c) return app.base.guardar('clientes', { nombre, telefono: tel, canalOrigen: f.canal, notas: '' });
+  if (!c) return app.base.guardar('clientes', { nombre, telefono: tel, canalOrigen: f.canal, notas: '', ...(f.amigoTocado && f.amigo ? { amigo: true } : {}) });
+  if (f.amigoTocado && !!c.amigo !== !!f.amigo) c = await app.base.guardar('clientes', { ...c, amigo: !!f.amigo });
   if ((tel && tel !== normalizarTelefono(c.telefono)) || (nombre && nombre !== c.nombre && tel)) c = await app.base.guardar('clientes', { ...c, nombre: nombre || c.nombre, telefono: tel || c.telefono });
   return c;
 }
@@ -271,6 +294,11 @@ export const acciones = {
     refrescarForm(app);
   },
   formPres: (app, d) => { app.ui.form.pres = d.pres; refrescarForm(app); },
+  formPromo: app => {
+    const f = app.ui.form; f.promo = !f.promo;
+    for (const k of Object.keys(f.precioFijo)) if (k.endsWith('|rebanada')) delete f.precioFijo[k]; // al cambiar el promo, las rebanadas se recalculan
+    pintarPromo(app);
+  },
   mas: (app, d) => { const f = app.ui.form, k = d.id + '|' + (f.canal === 'Rappi' ? 'rappi' : f.pres); f.cant[k] = (f.cant[k] || 0) + 1; refrescarForm(app); },
   menos: (app, d) => { const f = app.ui.form, k = d.id + '|' + (f.canal === 'Rappi' ? 'rappi' : f.pres); f.cant[k] = Math.max(0, (f.cant[k] || 0) - 1); refrescarForm(app); },
   verReserva: app => { app.ui.form.verReserva = !app.ui.form.verReserva; refrescarForm(app); },
@@ -325,7 +353,14 @@ export const acciones = {
   },
 };
 
+function pintarPromo(app) {
+  const b = document.getElementById('fPromoBox');
+  if (b) b.innerHTML = promoHtml(app);
+  refrescarForm(app);
+}
+
 export const entradas = {
+  amigo: (app, d, el) => { app.ui.form.amigo = el.checked; app.ui.form.amigoTocado = true; },
   campo: (app, d, el) => { app.ui.form[d.campo] = el.value; if (d.campo === 'envio') refrescarForm(app); },
   fecha: (app, d, el) => {
     app.ui.form.fecha = el.value;
@@ -336,6 +371,7 @@ export const entradas = {
     const f = app.ui.form; f.clienteNombre = el.value;
     const c = app.base.lista('clientes').find(x => x.nombre.toLowerCase() === el.value.trim().toLowerCase());
     if (c && c.telefono) { f.telefono = c.telefono; const t = document.getElementById('fTel'); if (t) t.value = c.telefono; }
+    if (c && c.amigo && !f.promo && f.canal !== 'Rappi') { f.promo = true; f.amigo = true; pintarPromo(app); app.toast(`${c.nombre} es amigo/a: precio promo puesto`); }
   },
 };
 

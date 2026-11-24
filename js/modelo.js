@@ -1,7 +1,7 @@
 // KUMAI OS · modelo de datos (14 entidades de la especificación v1.2, sección 4)
 import { uid, ymd, sumarDias, soloDigitos } from './util.js';
 
-export const VERSION_APP = '4.0-F4';
+export const VERSION_APP = '4.1';
 
 /** Una hoja de Google por entidad. El orden no importa; los nombres sí (son los de las hojas). */
 export const ENTIDADES = [
@@ -71,11 +71,22 @@ export function moldesPedido(p, porMolde = 5) { return rebanadasPedido(p, porMol
 export function pedidoActivo(p) { return !p.deleted && p.estatus !== 'cancelado'; }
 export function pedidoAbierto(p) { return pedidoActivo(p) && p.estatus !== 'entregado'; }
 
+/**
+ * Precio promo (vecinos del Andador y amigos): solo para la rebanada sencilla.
+ * Devuelve el precio promo si aplica a una rebanada de `precioLista`, o null (premium, sin promo, o promo no menor).
+ */
+export function precioPromo(precios, precioLista) {
+  const promo = Number(precios && precios.promo) || 0;
+  if (!promo || !(precioLista > promo)) return null;
+  if (precios.premium && precioLista >= precios.premium) return null;
+  return promo;
+}
+
 export function textoLinea(l, recetasPorId) {
   const r = recetasPorId.get(l.recetaId);
   const pres = PRESENTACIONES[l.presentacion] || PRESENTACIONES.rebanada;
   const unidad = l.cantidad === 1 ? pres.etiqueta.toLowerCase() : pres.plural;
-  return `${l.cantidad} ${unidad} de ${r ? r.nombre : 'sabor eliminado'}`;
+  return `${l.cantidad} ${unidad} de ${r ? r.nombre : 'sabor eliminado'}${l.promo ? ' (promo)' : ''}`;
 }
 
 // ---------- clientes ----------

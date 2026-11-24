@@ -25,7 +25,7 @@ export const CONFIG_INICIAL = {
   id: 'config', negocio: 'KUMAI',
   bufferPct: 18, comisionRappiPct: 34.8, // 30 % + IVA (Manual_Rappi_KUMAI; confirmado por Griz el 12-nov-2026)
   soletasPorMolde: 24, rebanadasPorMolde: 5,
-  precios: { rebanada: 85, premium: 100, molde: 385, moldePremium: 450, rappi: 90, rappiPremium: 100 },
+  precios: { rebanada: 85, premium: 100, molde: 385, moldePremium: 450, rappi: 90, rappiPremium: 100, promo: 80 },
   metas: { moldesSemana: 35 },
   // Parámetros del motor (especificación v1.2, sección 6). El motor llega en la F2; aquí ya quedan guardados.
   motor: {
@@ -88,6 +88,7 @@ export function construirSemilla(leido, opciones = {}) {
   const config = { ...CONFIG_INICIAL, recetarioVersion: leido.version };
   if (leido.soletas && leido.soletas.porMolde) config.soletasPorMolde = leido.soletas.porMolde;
   if (leido.precios.molde) config.precios = { ...config.precios, molde: leido.precios.molde, moldePremium: leido.precios.moldePremium };
+  if (leido.precios.promo) config.precios = { ...config.precios, promo: leido.precios.promo };
 
   for (const r of leido.recetas) {
     const componentes = r.componentes.map(c => {
@@ -116,19 +117,27 @@ export function construirSemilla(leido, opciones = {}) {
       sello({ id: `prod-${id}-rappi`, recetaId: id, presentacion: 'rappi', precios: { Rappi: p >= config.precios.premium ? config.precios.rappiPremium : config.precios.rappi }, activo }),
     );
   }
+  for (const o of leido.otros || []) {
+    const precios = { Mostrador: o.precio, Evento: o.precio, WhatsApp: o.precio };
+    if (o.rappi) precios.Rappi = o.rappi;
+    productos.push(sello({ id: idOtro(o.nombre), linea: 'otros', nombre: o.nombre, presentacion: o.presentacion, precios, costo: o.costo, conRebanada: !!o.conRebanada, enPrueba: true, activo: true }));
+  }
   return { insumos, recetas, productos, config: sello(config), recursos: RECURSOS_INICIALES.map(sello), avisos };
 }
+
+/** Id fijo de un producto de otra línea a partir de su nombre ("Café de olla KUMAI" → prod-otro-cafe-de-olla-kumai). */
+export const idOtro = nombre => 'prod-otro-' + String(nombre).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 // ---------- reporte de diferencias (importador) ----------
 const CAMPOS = {
   insumos: ['nombre', 'unidad', 'costoUnitario'],
   recetasBase: ['nombre', 'rinde', 'insumos', 'ajuste'],
   recetas: ['nombre', 'titulo', 'descripcion', 'menu', 'categoria', 'componentes', 'grenetinaG', 'pesoRango', 'sinBatch', 'usaSoletas', 'pasos', 'notas', 'validacion', 'alergeno'],
-  productos: ['precios'],
+  productos: ['precios', 'costo', 'nombre', 'presentacion'],
   config: ['soletasPorMolde', 'precios', 'recetarioVersion'],
 };
 const ETIQUETA = {
-  costoUnitario: 'costo unitario', componentes: 'componentes y costos', grenetinaG: 'grenetina', pesoRango: 'rango de peso',
+  costoUnitario: 'costo unitario', costo: 'costo', nombre: 'nombre', presentacion: 'presentación', componentes: 'componentes y costos', grenetinaG: 'grenetina', pesoRango: 'rango de peso',
   pasos: 'procedimiento', notas: 'notas', menu: 'menú', categoria: 'categoría', precios: 'precios', insumos: 'insumos',
   soletasPorMolde: 'soletas por molde', recetarioVersion: 'versión del recetario', validacion: 'en validación',
 };
@@ -171,7 +180,7 @@ export function compararConActual(semilla, actual) {
   revisar('insumos', semilla.insumos, CAMPOS.insumos, n => n.nombre);
   revisar('recetas', semilla.recetas, n => (n.tipo === 'base' ? CAMPOS.recetasBase : CAMPOS.recetas), n => (n.num ? `#${n.num} ${n.nombre}` : n.nombre));
   const nombreReceta = new Map(semilla.recetas.map(r => [r.id, r.nombre]));
-  revisar('productos', semilla.productos, CAMPOS.productos, n => `${nombreReceta.get(n.recetaId)} · ${n.presentacion}`);
+  revisar('productos', semilla.productos, n => (n.linea ? CAMPOS.productos : ['precios']), n => (n.linea ? `${n.nombre} · en prueba` : `${nombreReceta.get(n.recetaId)} · ${n.presentacion}`));
   revisar('config', [semilla.config], CAMPOS.config, () => 'Ajustes generales');
   const enSemilla = new Set(semilla.recetas.map(r => r.id));
   for (const r of actual.recetas || []) if (!r.deleted && r.tipo === 'sabor' && !enSemilla.has(r.id)) soloEnApp.push(r.nombre);

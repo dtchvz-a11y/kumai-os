@@ -6,6 +6,7 @@ import { libroXlsx } from './xlsx.js';
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 export const CATEGORIAS_GASTO = ['Insumos', 'Empaque', 'Gas y luz', 'Transporte', 'Eventos', 'Comisiones', 'Equipo', 'Otros'];
 const esDeposito = c => c.tipo === 'deposito-rappi';
+export const esOtro = c => !!c.productoId; // venta de otra línea (pastelito, café): no es rebanada
 const mes = f => f.slice(0, 7);
 const r2 = n => Math.round(n * 100) / 100;
 
@@ -16,11 +17,11 @@ export function ventas({ pedidos = [], cortes = [] }, desde = null, hasta = null
   const dentro = f => (!desde || f >= desde) && (!hasta || f <= hasta);
   for (const p of pedidos) {
     if (!pedidoActivo(p) || p.prueba || !dentro(p.fechaEntrega)) continue;
-    for (const l of p.lineas) out.push({ fecha: p.fechaEntrega, recetaId: l.recetaId, canal: p.canal, punto: p.canal, rebanadas: l.cantidad * (l.presentacion === 'molde' ? 5 : 1), ingreso: l.cantidad * l.precioUnit, origen: 'pedido' });
+    for (const l of p.lineas) out.push({ fecha: p.fechaEntrega, recetaId: l.recetaId, canal: p.canal, punto: p.canal, rebanadas: l.cantidad * (l.presentacion === 'molde' ? 5 : 1), ingreso: l.cantidad * l.precioUnit, origen: 'pedido', promo: l.promo ? l.cantidad : 0, descuento: l.promo ? l.cantidad * ((l.precioLista || l.precioUnit) - l.precioUnit) : 0 });
   }
   for (const c of cortes) {
-    if (c.deleted || esDeposito(c) || !c.vendidas || !dentro(c.fecha)) continue;
-    out.push({ fecha: c.fecha, recetaId: c.recetaId, canal: 'Mostrador', punto: c.puntoVenta || 'Mostrador', rebanadas: c.vendidas, ingreso: c.ingreso, origen: 'corte' });
+    if (c.deleted || esDeposito(c) || esOtro(c) || !c.vendidas || !dentro(c.fecha)) continue;
+    out.push({ fecha: c.fecha, recetaId: c.recetaId, canal: 'Mostrador', punto: c.puntoVenta || 'Mostrador', rebanadas: c.vendidas, ingreso: c.ingreso, origen: 'corte', promo: c.promoVendidas || 0, descuento: c.promoDescuento || 0 });
   }
   return out;
 }
@@ -34,17 +35,29 @@ export function tableros(datos, desde, hasta) {
   const dias = agrupar(v, f => deYmd(f.fecha).getDay()).map(x => ({ ...x, nombre: DIAS[x.clave] })).sort((a, b) => ((a.clave + 6) % 7) - ((b.clave + 6) % 7));
   return {
     total: { rebanadas: v.reduce((s, f) => s + f.rebanadas, 0), ingreso: v.reduce((s, f) => s + f.ingreso, 0) },
+    promo: { rebanadas: v.reduce((s, f) => s + (f.promo || 0), 0), descuento: v.reduce((s, f) => s + (f.descuento || 0), 0) },
+    otros: ventasOtros(datos.cortes || [], desde, hasta),
     porSabor: agrupar(v, f => f.recetaId).sort((a, b) => b.rebanadas - a.rebanadas),
     porCanal: agrupar(v, f => f.punto).sort((a, b) => b.ingreso - a.ingreso),
     porDia: dias,
     porSemana: agrupar(v, f => lunesDe(f.fecha)).sort((a, b) => a.clave.localeCompare(b.clave)),
   };
 }
+/** Ventas de otras líneas por producto: piezas, venta y utilidad (con el costo de ficha). */
+export function ventasOtros(cortes, desde = null, hasta = null) {
+  const m = new Map();
+  for (const c of cortes) {
+    if (c.deleted || !esOtro(c) || !c.vendidas || (desde && c.fecha < desde) || (hasta && c.fecha > hasta)) continue;
+    const x = m.get(c.productoId) || { productoId: c.productoId, piezas: 0, ingreso: 0, costo: 0 };
+    x.piezas += c.vendidas; x.ingreso += c.ingreso; x.costo += c.costo || 0; m.set(c.productoId, x);
+  }
+  return [...m.values()].map(x => ({ ...x, utilidad: r2(x.ingreso - x.costo) })).sort((a, b) => b.ingreso - a.ingreso);
+}
 /** Sell-through de mostrador por sabor: vendidas entre disponibles, y sobrantes (de los cortes). */
 export function sellThrough(cortes, desde = null, hasta = null) {
   const m = new Map();
   for (const c of cortes) {
-    if (c.deleted || esDeposito(c) || (desde && c.fecha < desde) || (hasta && c.fecha > hasta)) continue;
+    if (c.deleted || esDeposito(c) || esOtro(c) || (desde && c.fecha < desde) || (hasta && c.fecha > hasta)) continue;
     const x = m.get(c.recetaId) || { recetaId: c.recetaId, disponibles: 0, vendidas: 0, sobrantes: 0, dias: new Set() };
     x.disponibles += c.disponibles || 0; x.vendidas += c.vendidas || 0; x.sobrantes += c.sobrantes || 0; x.dias.add(c.fecha); m.set(c.recetaId, x);
   }
@@ -73,7 +86,7 @@ export function rotacion(datos, operativos, hoy) {
 export function ventaEsperadaSugerida(cortes, minimoMoldes, hoy, dias = 14) {
   const CL = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'];
   const por = new Map();
-  for (const c of cortes) if (!c.deleted && !esDeposito(c) && c.fecha < hoy && c.fecha >= sumarDias(hoy, -dias)) por.set(c.fecha, (por.get(c.fecha) || 0) + (c.vendidas || 0));
+  for (const c of cortes) if (!c.deleted && !esDeposito(c) && !esOtro(c) && c.fecha < hoy && c.fecha >= sumarDias(hoy, -dias)) por.set(c.fecha, (por.get(c.fecha) || 0) + (c.vendidas || 0));
   let vend = 0, min = 0, n = 0;
   for (const [f, v] of por) { const m = (minimoMoldes[CL[deYmd(f).getDay()]] || 0) * 5; if (m) { vend += Math.min(v, m); min += m; n++; } }
   return n >= 5 ? { dias: n, pct: Math.round(vend / min * 100) } : { dias: n, pct: null };
@@ -103,8 +116,8 @@ export function resultadoEvento(e, { pedidos = [], cortes = [] }, costoRebanada 
   const ligados = pedidos.filter(p => p.eventoId === e.id && pedidoActivo(p));
   const suyos = cortes.filter(c => !c.deleted && !esDeposito(c) && c.puntoVenta === e.nombre && c.fecha >= e.fechaInicio && c.fecha <= (e.fechaFin || e.fechaInicio));
   const ingreso = ligados.reduce((s, p) => s + totalPedido(p), 0) + suyos.reduce((s, c) => s + c.ingreso, 0);
-  const rebanadas = ligados.reduce((s, p) => s + rebanadasPedido(p), 0) + suyos.reduce((s, c) => s + c.vendidas, 0);
-  const costoProducto = ligados.reduce((s, p) => s + p.lineas.reduce((t, l) => t + l.cantidad * (l.presentacion === 'molde' ? 5 : 1) * costoRebanada(l.recetaId), 0), 0) + suyos.reduce((s, c) => s + c.vendidas * costoRebanada(c.recetaId), 0);
+  const rebanadas = ligados.reduce((s, p) => s + rebanadasPedido(p), 0) + suyos.filter(c => !esOtro(c)).reduce((s, c) => s + c.vendidas, 0);
+  const costoProducto = ligados.reduce((s, p) => s + p.lineas.reduce((t, l) => t + l.cantidad * (l.presentacion === 'molde' ? 5 : 1) * costoRebanada(l.recetaId), 0), 0) + suyos.reduce((s, c) => s + (esOtro(c) ? (c.costo || 0) : c.vendidas * costoRebanada(c.recetaId)), 0);
   const participacion = Number(e.costoParticipacion) || 0;
   return { pedidos: ligados.length, rebanadas, ingreso, participacion, costoProducto: r2(costoProducto), utilidad: r2(ingreso - participacion - costoProducto) };
 }

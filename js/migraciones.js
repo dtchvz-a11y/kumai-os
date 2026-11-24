@@ -10,7 +10,8 @@ const VIEJAS = {
   'insumo-leche-condensada': { nombre: 'lata', cantidad: 267 },
 };
 
-export async function migrar(base) {
+/** `semilla` (opcional): función que devuelve la semilla del recetario, para sumar lo que traen versiones nuevas. */
+export async function migrar(base, { semilla = null } = {}) {
   const hechos = [];
   const cfg = base.get('config', 'config');
   if (!cfg) return hechos;
@@ -47,6 +48,16 @@ export async function migrar(base) {
   // 4. Reglas de mostrador (F2).
   const c2 = base.get('config', 'config');
   if (!c2.mostrador) { await base.guardar('config', { ...c2, mostrador: MOSTRADOR_INICIAL, semanas: c2.semanas || {} }); hechos.push('reglas de mostrador'); }
+  // 5. Precio promo de $80 para vecinos del Andador y amigos (Recetario v4.2, 24-nov-2026).
+  const c3 = base.get('config', 'config');
+  if (c3.precios && c3.precios.promo == null) { await base.guardar('config', { ...c3, precios: { ...c3.precios, promo: 80 } }); hechos.push('precio promo'); }
+  // 6. Otras líneas en prueba (pastelito de churro, café de olla): entran una sola vez; si Griz borra uno, no regresa.
+  if (semilla && !base.todos('productos').some(p => p.linea === 'otros')) {
+    try {
+      const s = await semilla(), otros = s.productos.filter(p => p.linea === 'otros');
+      if (otros.length && await base.sembrar('productos', otros)) hechos.push('otras líneas');
+    } catch (e) { /* sin semilla a la mano (sin conexión la primera vez): se intenta en el siguiente arranque */ }
+  }
   return hechos;
 }
 

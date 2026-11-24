@@ -109,13 +109,28 @@ export async function sacarDeVitrina(base, recetaId, n, hoy) {
 }
 
 /** Venta de mostrador: descuenta vitrina y la suma al corte del día (un corte por fecha, sabor y equipo). */
-export async function venderMostrador(base, recetaId, n, precio, hoy, punto = 'Mostrador') {
+/** `lista`: precio normal cuando se vende a precio promo; la diferencia queda anotada en el corte. */
+export async function venderMostrador(base, recetaId, n, precio, hoy, punto = 'Mostrador', { lista = null } = {}) {
   const antes = stockVitrina(base, hoy).find(x => x.recetaId === recetaId);
   const habia = antes ? antes.hoy + antes.manana : 0;
   await sacarDeVitrina(base, recetaId, n, hoy);
   const id = `corte-${hoy}-${recetaId}-${punto === 'Mostrador' ? '' : slug(punto) + '-'}${base.deviceId.slice(0, 8)}`;
   const c = base.get('cortes', id) || { id, fecha: hoy, puntoVenta: punto, recetaId, disponibles: habia, vendidas: 0, sobrantes: habia, ingreso: 0 };
-  return base.guardar('cortes', { ...c, deleted: false, vendidas: c.vendidas + n, sobrantes: Math.max(0, habia - n), ingreso: c.ingreso + n * precio });
+  const promo = lista && lista > precio ? { promoVendidas: (c.promoVendidas || 0) + n, promoDescuento: (c.promoDescuento || 0) + n * (lista - precio) } : {};
+  return base.guardar('cortes', { ...c, ...promo, deleted: false, vendidas: c.vendidas + n, sobrantes: Math.max(0, habia - n), ingreso: c.ingreso + n * precio });
+}
+
+/**
+ * Venta de otra línea (pastelito, café). Un corte por fecha, producto y equipo, aparte de los de tiramisú.
+ * El combo lleva una rebanada: sale de la vitrina y se anota en el corte de su sabor a su precio de lista;
+ * al combo le queda el resto, para que la venta por sabor y el sell-through sigan cuadrando.
+ */
+export async function venderOtro(base, producto, n, precio, hoy, punto = 'Mostrador', { recetaId = null, precioRebanada = 0 } = {}) {
+  let ingreso = n * precio;
+  if (producto.conRebanada && recetaId) { await venderMostrador(base, recetaId, n, precioRebanada, hoy, punto); ingreso -= n * precioRebanada; }
+  const id = `corte-${hoy}-${producto.id}-${punto === 'Mostrador' ? '' : slug(punto) + '-'}${base.deviceId.slice(0, 8)}`;
+  const c = base.get('cortes', id) || { id, fecha: hoy, puntoVenta: punto, productoId: producto.id, recetaId: null, vendidas: 0, ingreso: 0, costo: 0 };
+  return base.guardar('cortes', { ...c, deleted: false, vendidas: c.vendidas + n, ingreso: c.ingreso + ingreso, costo: Math.round(((c.costo || 0) + n * (producto.costo || 0)) * 100) / 100 });
 }
 
 /**

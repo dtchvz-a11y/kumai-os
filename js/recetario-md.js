@@ -85,6 +85,19 @@ export function leerRecetario(md) {
   // ---------- precios de lista ----------
   const mp = md.match(/Molde completo[^$]*\$(\d+)\s*\/\s*Premium \$(\d+)/);
   if (mp) out.precios = { molde: Number(mp[1]), moldePremium: Number(mp[2]) };
+  const mpromo = md.match(/Precio promo:[^$]*\$(\d+)/);
+  if (mpromo) out.precios.promo = Number(mpromo[1]);
+
+  // ---------- otras líneas (no tiramisú): tabla de la sección "Otras líneas" ----------
+  out.otros = [];
+  const iOtros = lineas.findIndex(l => /^# Otras líneas/.test(l));
+  if (iOtros >= 0) for (let i = iOtros + 1; i < lineas.length && !/^# /.test(lineas[i]); i++) {
+    const l = lineas[i];
+    if (!/^\|/.test(l) || /^\|\s*-/.test(l) || /Producto/.test(l)) continue;
+    const c = celdas(l).map(limpia), num = t => { const m = String(t).replace(/,/g, '').match(/\$(\d+(?:\.\d+)?)/); return m ? Number(m[1]) : null; };
+    if (!c[0] || num(c[3]) === null) continue;
+    out.otros.push({ nombre: c[0], presentacion: c[1], costo: num(c[2]), precio: num(c[3]), rappi: num(c[4]), conRebanada: /rebanada/i.test(c[2]) });
+  }
 
   // ---------- sabores en validación y alérgenos ----------
   const enValidacion = new Set();
