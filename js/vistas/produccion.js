@@ -28,7 +28,7 @@ function otrosHtml(app) {
   const os = app.otros();
   if (!os.length) return '';
   return `<div class="taskday"><h3>Otras líneas · en prueba</h3><div class="mini">Cada toque es 1 pieza vendida en el punto de hoy. El combo saca una rebanada de la vitrina.</div>
-    <div class="chips" style="margin-top:8px">${os.map(p => `<button class="chip" data-accion="produccion.venderOtro" data-id="${esc(p.id)}">${esc(p.nombre)} · ${dinero(precioOtro(p))}</button>`).join('')}</div></div>`;
+    <div class="chips" style="margin:8px 0 8px">${os.map(p => `<button class="chip" data-accion="produccion.venderOtro" data-id="${esc(p.id)}">${esc(p.nombre)} · ${dinero(precioOtro(p))}</button>`).join('')}</div></div>`;
 }
 
 export function textoTarea(app, t) {
@@ -46,13 +46,41 @@ export function filaTarea(app, t) {
   if (t.tipo === 'lavado') return `<div class="checkrow pasivo"><div class="box"></div><div class="checkbody"><div><span class="clock-inline">${t.inicio}</span>${esc(textoTarea(app, t))}</div><div class="mini">${sub}</div></div></div>`;
   return `<div class="checkrow" data-accion="produccion.tarea" data-id="${esc(t.id)}"><div class="box"></div><div class="checkbody"><div><span class="clock-inline">${t.inicio}</span>${esc(textoTarea(app, t))}</div><div class="mini">${sub}</div></div></div>`;
 }
-export function alertasHtml(pl) {
+/** Avisos del motor. Si hay más de uno se juntan en un renglón que se abre, para no empujar la vitrina fuera de la pantalla. */
+export function alertasHtml(pl, extra = '') {
   const lim = f => f.replace(/(\d{4}-\d{2}-\d{2})/g, x => fechaCorta(x));
-  let h = pl.alertas.filter(a => a.tipo === 'no-cabe').map(a => `<div class="alert"><div><b>No cabe:</b> ${esc(lim(a.texto))} Opciones: mover la fecha, adelantar soletas o rechazarlo.</div></div>`).join('');
+  const noCabe = pl.alertas.filter(a => a.tipo === 'no-cabe');
+  const items = noCabe.map(a => `<div class="alert"><div><b>No cabe:</b> ${esc(lim(a.texto))} Opciones: mover la fecha, adelantar soletas o rechazarlo.</div></div>`);
   const cortos = pl.alertas.filter(a => a.tipo === 'mostrador-corto');
-  if (cortos.length === 1) h += `<div class="alert soft"><div><b>Vitrina:</b> ${esc(lim(cortos[0].texto))}</div></div>`;
-  else if (cortos.length) h += `<div class="alert soft"><div><b>Vitrina corta ${cortos.length} días:</b> ${cortos.map(a => `${esc(fechaCorta(a.fecha))} (faltan ${a.moldes})`).join(', ')}. No alcanzan las horas para el mínimo de mostrador; los pedidos van primero.</div></div>`;
-  return h;
+  if (cortos.length === 1) items.push(`<div class="alert soft"><div><b>Vitrina:</b> ${esc(lim(cortos[0].texto))}</div></div>`);
+  else if (cortos.length) items.push(`<div class="alert soft"><div><b>Vitrina corta ${cortos.length} días:</b> ${cortos.map(a => `${esc(fechaCorta(a.fecha))} (faltan ${a.moldes})`).join(', ')}. No alcanzan las horas para el mínimo de mostrador; los pedidos van primero.</div></div>`);
+  const nExtra = (extra.match(/class="alert/g) || []).length;
+  if (items.length + nExtra <= 1) return items.join('') + extra;
+  const partes = [];
+  if (noCabe.length) partes.push(`<b>${noCabe.length} ${noCabe.length === 1 ? 'pedido no cabe' : 'pedidos no caben'}</b>`);
+  if (cortos.length) partes.push(`vitrina corta ${cortos.length} ${cortos.length === 1 ? 'día' : 'días'}`);
+  if (nExtra) partes.push(`${partes.length ? `${nExtra} ${nExtra === 1 ? 'aviso más' : 'avisos más'}` : `<b>${nExtra} avisos</b>`}`);
+  return `<details class="avisos"><summary><span>${partes.join(' · ')}</span></summary>${items.join('')}${extra}</details>`;
+}
+
+/** Lo siguiente que toca hacer, con su botón. Sale en Hoy y en Producción. */
+export function siguienteHtml(app, pl, { verPlan = false } = {}) {
+  const t = pl.tareas.find(x => x.tipo !== 'lavado'), hoy = app.hoy();
+  if (!t) return '';
+  const sub = t.tipo === 'armado' ? `${h1(t.trabajoMin)} de armado + ${h1(t.lavadoMin)} de lavado` : t.tipo === 'crema' ? '1 h de batido + 1 h de lavado' : h1(t.duracionMin);
+  return `<section class="siguiente"><div class="cuando">Lo siguiente · ${t.fecha === hoy ? '' : esc(fechaHumana(t.fecha, hoy)) + ', '}${t.inicio}</div>
+    <div class="que">${esc(textoTarea(app, t))}</div><div class="sub">${esc(sub)}</div>
+    <div class="acciones h"><button class="primary" data-accion="produccion.tarea" data-id="${esc(t.id)}">Marcar hecha</button>${verPlan ? '<button class="secondary" style="flex:0 0 auto" data-accion="app.ir" data-vista="produccion">Ver plan</button>' : ''}</div></section>`;
+}
+
+/** Vitrina con venta rápida: se usa en Producción y en Hoy. */
+export function vitrinaHtml(app, pl, { completa = true } = {}) {
+  const hoy = app.hoy(), vit = op.stockVitrina(app.base, hoy), total = vit.reduce((t, x) => t + x.hoy, 0), obj = pl.dias[0].objetivo, pv = puntoDeHoy(app);
+  return `<div class="taskday"><h3>Vitrina · ${total} ${total === 1 ? 'rebanada' : 'rebanadas'}${obj ? ` · mínimo de hoy ${obj}` : ''}</h3>
+    <label for="pvSel" style="margin-top:4px">Hoy vendo en</label><select id="pvSel" data-entrada="produccion.punto" style="margin-bottom:6px">${puntos(app).map(x => `<option ${x === pv ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
+    ${vit.length ? vit.map(x => `<div class="saborrow"><div class="crece"><b>${esc(x.receta.nombre)}</b><span class="${x.vence === hoy ? 'urge' : ''}">${x.hoy} ${x.hoy === 1 ? 'rebanada' : 'rebanadas'}${x.vence ? ` · ${x.vence === hoy ? 'último día' : 'hasta ' + fechaCorta(x.vence)}` : ''}${x.manana ? ` · ${x.manana} salen mañana` : ''}</span></div>
+      <button class="secondary" ${x.hoy + x.manana ? '' : 'disabled'} data-accion="produccion.vender" data-id="${esc(x.recetaId)}">Vender 1</button>${promoDe(app, x.recetaId) ? `<button class="secondary promo" ${x.hoy + x.manana ? '' : 'disabled'} data-accion="produccion.venderPromo" data-id="${esc(x.recetaId)}" aria-label="Vender 1 de ${esc(x.receta.nombre)} a precio promo">A ${dinero(promoDe(app, x.recetaId))}</button>` : ''}</div>`).join('') : '<div class="mini" style="padding:12px 2px">Sin rebanadas registradas. Al marcar un armado como hecho aparecen aquí.</div>'}
+    ${completa ? '<div class="acciones h" style="margin:10px 0 6px"><button class="secondary" data-accion="produccion.conteo">Conteo al cierre</button><button class="secondary" data-accion="produccion.fuera">Registrar producción</button></div>' : ''}</div>`;
 }
 
 export function render(app) {
@@ -61,56 +89,52 @@ export function render(app) {
   const s = pl.semanas.find(x => x.lunes === lunes) || { totalMin: 0, horneadoMin: 0, cremaMin: 0, armadoMin: 0, lavadoMin: 0, moldes: 0, moldesPedido: 0, moldesMostrador: 0 };
   const restoSemana = pl.dias.filter(d => d.fecha <= sumarDias(lunes, 6)).reduce((t, d) => t + d.disponibleMin, 0);
   const techo = techoSemanal(P);
-  let h = `<h2 class="viewtitle">Producción</h2>
-    <div class="grid2">
-      <div class="stat"><div class="n">${horas(s.totalMin)}</div><div class="l">Horas por hacer esta semana · quedan ${horas(restoSemana)} disponibles</div></div>
+  const stats = `<div class="grid2">
+      <div class="stat"><div class="n">${horas(s.totalMin)} <small>h</small></div><div class="l">Por hacer esta semana · quedan ${horas(restoSemana)} h</div></div>
       <div class="stat"><div class="n">${s.moldes}</div><div class="l">Moldes por armar · ${s.moldesPedido} de pedidos, ${s.moldesMostrador} de mostrador</div></div>
-      <div class="stat"><div class="n">${horas(s.horneadoMin)}</div><div class="l">Horas de horno · lavado ${horas(s.lavadoMin)} h</div></div>
+      <div class="stat"><div class="n">${horas(s.horneadoMin)} <small>h</small></div><div class="l">De horno · lavado ${horas(s.lavadoMin)} h</div></div>
       <div class="stat"><div class="n">${techo.techo}</div><div class="l">Techo por semana con ${horas(minutosSemana(P))} h y ${P.moldesFisicos} moldes</div></div>
-    </div>
-    <div class="mini" style="margin-top:8px">Esta semana: horneado ${h1(s.horneadoMin)} · crema ${h1(s.cremaMin)} · armado ${h1(s.armadoMin)} · lavado ${h1(s.lavadoMin)}.</div>
-    ${alertasHtml(pl)}`;
-
-  // ----- vitrina -----
-  const vit = op.stockVitrina(app.base, hoy), total = vit.reduce((t, x) => t + x.hoy, 0), obj = pl.dias[0].objetivo;
-  const pv = puntoDeHoy(app);
-  h += `<div class="taskday"><h3>Vitrina · ${total} rebanadas${obj ? ` · mínimo de hoy ${obj}` : ''}</h3>
-    <label for="pvSel">Hoy vendo en</label><select id="pvSel" data-entrada="produccion.punto">${puntos(app).map(x => `<option ${x === pv ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
-    ${vit.length ? vit.map(x => `<div class="saborrow"><div class="crece"><b>${esc(x.receta.nombre)}</b><span>${x.hoy} ${x.hoy === 1 ? 'rebanada' : 'rebanadas'}${x.vence ? ` · ${x.vence === hoy ? 'último día' : 'hasta ' + fechaCorta(x.vence)}` : ''}${x.manana ? ` · ${x.manana} salen mañana` : ''}</span></div>
-      <button class="secondary" ${x.hoy + x.manana ? '' : 'disabled'} data-accion="produccion.vender" data-id="${esc(x.recetaId)}">Vender 1</button>${promoDe(app, x.recetaId) ? `<button class="secondary" style="margin-left:6px" ${x.hoy + x.manana ? '' : 'disabled'} data-accion="produccion.venderPromo" data-id="${esc(x.recetaId)}" aria-label="Vender 1 de ${esc(x.receta.nombre)} a precio promo">A ${dinero(promoDe(app, x.recetaId))}</button>` : ''}</div>`).join('') : '<div class="mini" style="padding:12px 0">Sin rebanadas registradas. Al marcar un armado como hecho aparecen aquí.</div>'}
-    <div class="acciones h"><button class="secondary" data-accion="produccion.conteo">Conteo al cierre</button><button class="secondary" data-accion="produccion.fuera">Registrar producción</button></div></div>`;
-  h += otrosHtml(app);
+    </div>`;
 
   // ----- sabores de la semana -----
   const lunesSel = u.semana === 'esta' ? lunes : sumarDias(lunes, 7);
   const oper = app.sabores().filter(r => r.menu === 'operativo');
   const sem = saboresDeSemana(cfg.semanas || {}, lunesSel, oper);
-  h += `<div class="taskday"><h3>Sabores de mostrador</h3>
+  const sabores = `<div class="taskday"><h3>Sabores de mostrador</h3>
     <div class="seg"><button class="${u.semana === 'esta' ? 'on' : ''}" data-accion="produccion.semana" data-semana="esta">Esta semana</button><button class="${u.semana === 'prox' ? 'on' : ''}" data-accion="produccion.semana" data-semana="prox">Semana del ${esc(fechaCorta(sumarDias(lunes, 7)).slice(4))}</button></div>
     <div class="chips">${oper.map(r => `<button class="chip ${sem.ids.includes(r.id) ? 'on' : ''}" data-accion="produccion.sabor" data-id="${esc(r.id)}" data-lunes="${lunesSel}">${esc(r.nombre)}</button>`).join('')}</div>
-    <div class="mini" style="margin-top:8px">${sem.elegida ? `${sem.ids.length} sabores elegidos. La app reparte los moldes entre ellos.` : sem.heredadaDe ? 'Sin elegir todavía: se repiten los de la semana anterior. Toca un sabor para cambiarlos.' : 'Sin elegir: entra todo el menú operativo. Toca un sabor para quitarlo.'}</div></div>`;
+    <div class="mini" style="padding:0 2px 8px">${sem.elegida ? `${sem.ids.length} sabores elegidos. La app reparte los moldes entre ellos.` : sem.heredadaDe ? 'Sin elegir todavía: se repiten los de la semana anterior. Toca un sabor para cambiarlos.' : 'Sin elegir: entra todo el menú operativo. Toca un sabor para quitarlo.'}</div></div>`;
 
   // ----- plan por día -----
-  h += '<div class="cintillo">Plan de producción</div>';
-  let alguno = false;
+  let plan = '<div class="cintillo">Plan de producción</div>', alguno = false;
   for (const d of pl.dias.slice(0, 8)) {
     const ts = pl.tareas.filter(t => t.fecha === d.fecha);
     if (!ts.length && !d.objetivo && !d.pedidos.length) continue;
     alguno = true;
-    h += `<div class="taskday"><h3>${esc(fechaHumana(d.fecha, hoy))} · ${h1(d.usadoMin)} de ${h1(d.disponibleMin)}${d.saturado ? ' · lleno' : ''}</h3>
-      ${ts.map(t => filaTarea(app, t)).join('') || '<div class="mini" style="padding:12px 0">Nada que producir.</div>'}
-      <div class="mini" style="padding:6px 0 0">${d.objetivo ? `Vitrina al abrir, con este plan: ${d.stockPlaneado} de ${d.objetivo} rebanadas.` : 'Sin mínimo de mostrador.'}${d.pedidos.length ? ` ${d.pedidos.length} ${d.pedidos.length === 1 ? 'pedido' : 'pedidos'}, ${d.rebanadasPedidos} rebanadas.` : ''}</div></div>`;
+    plan += `<div class="taskday"><h3>${esc(fechaHumana(d.fecha, hoy))} · ${h1(d.usadoMin)} de ${h1(d.disponibleMin)}${d.saturado ? ' · lleno' : ''}</h3>
+      ${ts.map(t => filaTarea(app, t)).join('') || '<div class="mini" style="padding:12px 2px">Nada que producir.</div>'}
+      <div class="mini" style="padding:6px 2px 6px">${d.objetivo ? `Vitrina al abrir, con este plan: ${d.stockPlaneado} de ${d.objetivo} rebanadas.` : 'Sin mínimo de mostrador.'}${d.pedidos.length ? ` ${d.pedidos.length} ${d.pedidos.length === 1 ? 'pedido' : 'pedidos'}, ${d.rebanadasPedidos} rebanadas.` : ''}</div></div>`;
   }
-  if (!alguno) h += '<div class="empty">Sin producción pendiente.</div>';
+  if (!alguno) plan += '<div class="empty">Sin producción pendiente.</div>';
 
   // ----- lotes -----
   const lotes = app.base.lista('lotes').filter(l => l.disponible > 0 && l.tipo !== 'producto').sort((a, b) => a.caducidad.localeCompare(b.caducidad));
-  h += `<div class="cintillo">Crema y soletas</div>` + (lotes.length ? lotes.map(l => {
+  const lotesH = `<div class="taskday"><h3>Crema y soletas</h3>` + (lotes.length ? lotes.map(l => {
     const q = diasEntre(hoy, l.caducidad), dia = diasEntre(l.fechaProduccion, hoy) + 1;
     return `<div class="insumorow"><span>${l.tipo === 'crema' ? `Crema base · día ${dia} de ${P.cremaVidaDias}${dia >= 3 && q >= 0 ? ' · re-batir' : ''}` : `Soletas del ${esc(fechaCorta(l.fechaProduccion))}`}${q < 0 ? ' · <b>caducó</b>' : q <= 1 ? ` · ${q === 0 ? 'último día' : 'vence mañana'}` : ''}</span><span class="folio">${l.disponible} ${l.tipo === 'crema' ? (l.disponible === 1 ? 'bote' : 'botes') : 'pzas'}</span></div>`;
-  }).join('') : '<div class="mini">Sin lotes registrados.</div>');
-  h += `<div class="mini" style="margin-top:14px">El plan se recalcula solo con los pedidos, la vitrina y los lotes reales. Supone que cada día se vende el ${P.mostrador.ventaEsperadaPct}% del mínimo de mostrador (se cambia en Ajustes).</div>`;
-  return h;
+  }).join('') : '<div class="mini" style="padding:8px 2px 10px">Sin lotes registrados.</div>') + '</div>';
+
+  return `<h2 class="viewtitle">Producción</h2>
+    <div class="cols"><div class="col-a">
+      <div class="o1">${stats}<div class="mini" style="margin:-4px 2px 12px">Esta semana: horneado ${h1(s.horneadoMin)} · crema ${h1(s.cremaMin)} · armado ${h1(s.armadoMin)} · lavado ${h1(s.lavadoMin)}.</div></div>
+      <div class="o2">${siguienteHtml(app, pl)}${alertasHtml(pl)}</div>
+      <div class="o5">${sabores}</div>
+      <div class="o6">${plan}</div>
+    </div><div class="col-b">
+      <div class="o3">${vitrinaHtml(app, pl)}</div>
+      <div class="o4">${otrosHtml(app)}</div>
+      <div class="o7">${lotesH}<div class="mini" style="margin:2px 2px 14px">El plan se recalcula solo con los pedidos, la vitrina y los lotes reales. Supone que cada día se vende el ${P.mostrador.ventaEsperadaPct}% del mínimo de mostrador (se cambia en Ajustes).</div></div>
+    </div></div>`;
 }
 
 function modalTarea(app, t) {
@@ -118,7 +142,7 @@ function modalTarea(app, t) {
   let cuerpo = '';
   if (t.tipo === 'crema') cuerpo = `<label for="tBotes">Botes que salieron</label><input id="tBotes" type="number" inputmode="numeric" value="${t.cantidad}">`;
   if (t.tipo === 'horneado') cuerpo = `<div class="dos"><div><label for="tTandas">Tandas horneadas</label><input id="tTandas" type="number" inputmode="numeric" value="${t.tandas}"></div><div><label for="tPiezas">Soletas buenas</label><input id="tPiezas" type="number" inputmode="numeric" value="${t.cantidad}"></div></div>`;
-  if (t.tipo === 'armado') cuerpo = `<label>Moldes armados</label>${t.moldes.map((m, i) => `<label style="text-transform:none;letter-spacing:0;font-size:15px;color:var(--tinta);margin:10px 0"><input type="checkbox" checked data-molde="${i}" style="width:auto;margin-right:10px">${esc(R.get(m.recetaId) ? R.get(m.recetaId).nombre : '?')}${m.motivo === 'pedido' ? ` · ${esc(m.folio)}` : ' · mostrador'}</label>`).join('')}
+  if (t.tipo === 'armado') cuerpo = `<label>Moldes armados</label>${t.moldes.map((m, i) => `<label style="text-transform:none;letter-spacing:0;font-size:15px;color:var(--t1);margin:10px 0"><input type="checkbox" checked data-molde="${i}" style="width:auto;margin-right:10px">${esc(R.get(m.recetaId) ? R.get(m.recetaId).nombre : '?')}${m.motivo === 'pedido' ? ` · ${esc(m.folio)}` : ' · mostrador'}</label>`).join('')}
     <div class="smallnote">Por cada molde entran 5 rebanadas a la vitrina (salen a la venta mañana) y se descuenta 1 bote, ${app.cfg().soletasPorMolde} soletas y su grenetina.</div>`;
   app.ui.tarea = t;
   app.modal(`<h3>${esc(TIPO[t.tipo])}</h3><div class="mini">${esc(fechaHumana(t.fecha, app.hoy()))} · ${t.inicio} · ${esc(textoTarea(app, t))}</div>${cuerpo}

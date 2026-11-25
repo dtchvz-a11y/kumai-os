@@ -36,7 +36,7 @@ function tablerosHtml(app, u) {
   if (rot.candidatos.length) h += `<div class="alert"><div><b>Rotación:</b> ${rot.candidatos.map(nom).map(esc).join(', ')} quedó dos veces o más en último lugar en los últimos ${rot.fines} fines de semana. Según la regla del recetario, le toca salir del menú operativo.</div></div>`;
   const cfg = app.cfg(), sug = an.ventaEsperadaSugerida(d.cortes, (cfg.mostrador || {}).minimoMoldes || {}, hoy);
   if (sug.pct !== null && sug.pct !== (cfg.mostrador || {}).ventaEsperadaPct) h += `<div class="alert soft"><div><b>Venta esperada de mostrador:</b> en ${sug.dias} días con datos vendiste en promedio el ${sug.pct}% del mínimo. El plan supone ${(cfg.mostrador || {}).ventaEsperadaPct}%.
-    <div><button class="chip" style="margin-top:8px;background:var(--crema)" data-accion="ventas.usarVenta" data-pct="${sug.pct}">Usar ${sug.pct}% en el plan</button></div></div></div>`;
+    <div><button class="chip" style="margin-top:8px;background:var(--sup)" data-accion="ventas.usarVenta" data-pct="${sug.pct}">Usar ${sug.pct}% en el plan</button></div></div></div>`;
   h += `<div class="taskday"><h3>Por sabor</h3>${barras(t.porSabor, f => f.rebanadas, f => nom(f.clave), f => `${f.rebanadas} · ${dinero(Math.round(f.ingreso))}`)}</div>
     <div class="taskday"><h3>Por canal</h3>${barras(t.porCanal, f => f.ingreso, f => f.clave, f => `${dinero(Math.round(f.ingreso))} · ${Math.round(f.ingreso / t.total.ingreso * 100)}%`)}</div>
     <div class="taskday"><h3>Por día de la semana</h3>${barras(t.porDia, f => f.rebanadas, f => f.nombre, f => `${f.rebanadas} reb`)}</div>

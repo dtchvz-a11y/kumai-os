@@ -124,7 +124,7 @@ function promoHtml(app) {
   const f = app.ui.form, promo = (app.cfg().precios || {}).promo;
   if (f.canal === 'Rappi' || !promo) return '';
   return `<div class="chips" style="margin-top:12px"><button type="button" class="chip ${f.promo ? 'on' : ''}" data-accion="pedidos.formPromo">Precio promo ${dinero(promo)} · Andador y amigos</button></div>
-    ${f.promo ? `<label style="text-transform:none;letter-spacing:0;font-size:14px;color:var(--tinta);margin:8px 0 0"><input type="checkbox" id="fAmigo" ${f.amigo ? 'checked' : ''} data-entrada="pedidos.amigo" style="width:auto;margin-right:10px">Recordar como amigo/a: el promo se pone solo en sus pedidos</label>
+    ${f.promo ? `<label style="text-transform:none;letter-spacing:0;font-size:14px;color:var(--t1);margin:8px 0 0"><input type="checkbox" id="fAmigo" ${f.amigo ? 'checked' : ''} data-entrada="pedidos.amigo" style="width:auto;margin-right:10px">Recordar como amigo/a: el promo se pone solo en sus pedidos</label>
       <div class="smallnote">Solo rebanadas sencillas. Premium y moldes completos quedan a su precio.</div>` : ''}`;
 }
 

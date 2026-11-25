@@ -49,20 +49,26 @@ export const app = {
   plan(dias = 14) { return this._plan[dias] || (this._plan[dias] = planificar(this.motorEntrada(dias))); },
 
   // ---------- pantalla ----------
-  ir(vista) { this.vista = vista; this.render(); window.scrollTo(0, 0); },
+  ir(vista) { this.vista = vista; this.render(); window.scrollTo({ top: 0, behavior: 'instant' }); },
   render() {
     this._ctx = null; this._plan = {}; this._renderPendiente = false;
     const listo = !!this.base.meta.cargaInicial;
     $('tabbar').hidden = !listo; $('fab').hidden = !listo || !['hoy', 'pedidos'].includes(this.vista);
     $('fechaHoy').textContent = fechaLarga(this.hoy());
     $('view').innerHTML = listo ? VISTAS[this.vista].render(this) : carga.render(this);
-    for (const b of $('tabbar').querySelectorAll('button')) b.classList.toggle('active', b.dataset.vista === (['recetario', 'ajustes', 'simulador'].includes(this.vista) ? 'mas' : this.vista));
+    for (const b of $('tabbar').querySelectorAll('button')) b.classList.toggle('active', b.dataset.vista === (['recetario', 'ajustes', 'simulador', 'inventario', 'dinero'].includes(this.vista) ? 'mas' : this.vista));
   },
   /** Si estás escribiendo en un campo, no se repinta hasta que sueltes el campo. */
   renderSuave() {
     const a = document.activeElement;
     if (a && $('view').contains(a) && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) { this._renderPendiente = true; return; }
     this.render();
+  },
+  /** Tema: 'auto' sigue al celular; 'claro' u 'oscuro' lo fijan en este equipo. */
+  tema() { try { return localStorage.getItem('kumai-tema') || 'auto'; } catch (e) { return 'auto'; } },
+  fijarTema(t) {
+    try { if (t === 'auto') localStorage.removeItem('kumai-tema'); else localStorage.setItem('kumai-tema', t); } catch (e) { /* sin almacenamiento: dura esta sesión */ }
+    if (t === 'auto') delete document.documentElement.dataset.tema; else document.documentElement.dataset.tema = t;
   },
   modal(html) { $('modalBody').innerHTML = html; $('modalBg').classList.add('open'); $('modalBody').scrollTop = 0; },
   cerrarModal() { $('modalBg').classList.remove('open'); $('modalBody').innerHTML = ''; },

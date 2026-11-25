@@ -49,7 +49,7 @@ function saboresHtml(app) {
   }).join('')}<div class="mini">Costos de las fichas de MVP, con buffer y empaque. Cambia el precio aquí; aplica a mostrador, eventos y WhatsApp.</div></div>`;
   h += `<div class="mini">Costo por molde con ingredientes, sin buffer, igual que en Recetario_KUMAI v${esc(app.cfg().recetarioVersion || '—')}. El margen es el de la rebanada en venta directa.</div>
     <div class="acciones"><button class="secondary" data-accion="recetario.nueva">Nueva receta</button>
-    <label class="secondary" style="display:block;text-align:center;border:1.5px solid var(--canela);border-radius:3px;padding:13px 16px;margin:0;font-size:12px;color:var(--chocolate);cursor:pointer;letter-spacing:.13em">Importar Recetario_KUMAI.md
+    <label class="secondary" style="display:block;text-align:center;border-radius:12px;padding:13px 16px;margin:0;font-size:14px;cursor:pointer;background:var(--sup2);color:var(--t1)">Importar Recetario_KUMAI.md
       <input type="file" accept=".md,.txt,text/markdown,text/plain" data-entrada="recetario.archivo" hidden></label></div>`;
   return h;
 }

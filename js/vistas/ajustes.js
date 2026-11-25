@@ -14,6 +14,9 @@ export function render(app) {
   const nombreDisp = id => (disp[id] ? `${disp[id].nombre} (${disp[id].letra})` : id === 'servidor' ? 'servidor' : 'otro equipo');
   return `<h2 class="viewtitle">Ajustes</h2>
 
+  <div class="taskday"><h3>Tema</h3>
+    <div class="seg">${[['auto', 'Automático'], ['claro', 'Día'], ['oscuro', 'Noche']].map(([k, t]) => `<button class="${app.tema() === k ? 'on' : ''}" data-accion="ajustes.tema" data-tema="${k}">${t}</button>`).join('')}</div>
+    <div class="mini" style="padding-bottom:8px">Automático sigue el modo claro u oscuro del celular. Se guarda en este equipo.</div></div>
   <div class="taskday"><h3>Sincronización</h3>
     <div class="insumorow"><span>Estado</span><span class="folio">${FASE[r.fase]}</span></div>
     ${r.error ? `<div class="alert"><div>${esc(r.error)}</div></div>` : ''}
@@ -61,7 +64,7 @@ export function render(app) {
 
   <div class="taskday"><h3>Respaldo</h3>
     <div class="acciones"><button class="secondary" data-accion="ajustes.exportar">Exportar respaldo completo (JSON)</button>
-    <label class="secondary" style="display:block;text-align:center;border:1.5px solid var(--canela);border-radius:3px;padding:13px 16px;margin:0;font-size:12px;color:var(--chocolate);cursor:pointer;letter-spacing:.13em">Importar respaldo
+    <label class="secondary" style="display:block;text-align:center;border-radius:12px;padding:13px 16px;margin:0;font-size:14px;cursor:pointer;background:var(--sup2);color:var(--t1)">Importar respaldo
       <input type="file" accept=".json,application/json" data-entrada="ajustes.archivo" hidden></label></div>
     <div class="smallnote">El respaldo trae todo: recetario, pedidos, clientes, inventario y ajustes. Importarlo reemplaza lo que hay en este equipo.</div>
   </div>
@@ -87,6 +90,7 @@ async function quitarPrueba(app) {
 }
 
 export const acciones = {
+  tema(app, d) { app.fijarTema(d.tema); app.render(); },
   async guardarSync(app) {
     const v = id => document.getElementById(id).value.trim();
     await app.base.metaSet('syncUrl', v('aUrl')); await app.base.metaSet('syncClave', v('aClave')); await app.base.metaSet('nombreDispositivo', v('aNom'));

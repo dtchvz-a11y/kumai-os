@@ -16,7 +16,7 @@ export function render(app) {
     if (bajos.length) h += `<div class="alert"><div><b>Bajo el mínimo:</b> ${bajos.map(f => esc(f.insumo.nombre)).join(', ')}.</div></div>`;
     if (sinCapturar.length) h += `<div class="alert soft"><div><b>Falta capturar compras:</b> ${sinCapturar.map(f => esc(f.insumo.nombre)).join(', ')}. La app descontó producción de insumos que no tenía registrados.</div></div>`;
     h += filas.map(f => `<div class="recrow" data-accion="inventario.mov" data-id="${esc(f.insumo.id)}"><div class="crece"><b>${esc(f.insumo.nombre)}</b><span>${f.existencia < 0 ? 'sin capturar' : esc(baseTxt(f.insumo, f.existencia))}${f.insumo.umbralMin ? ` · mínimo ${esc(baseTxt(f.insumo, f.insumo.umbralMin))}` : ''}</span></div>
-      <div class="der"><span class="num" style="${f.bajo || f.existencia < 0 ? '' : 'color:var(--tinta)'}">${f.existencia < 0 ? '—' : esc(presTxt(f.insumo, f.enPresentaciones))}</span></div></div>`).join('');
+      <div class="der"><span class="num" style="${f.bajo || f.existencia < 0 ? '' : 'color:var(--t1)'}">${f.existencia < 0 ? '—' : esc(presTxt(f.insumo, f.enPresentaciones))}</span></div></div>`).join('');
     h += `<div class="mini" style="margin-top:12px">Toca un insumo para registrar una compra, una merma o corregir lo que hay. La producción marcada como hecha descuenta sola.</div>`;
   } else {
     const dias = Number(u.sub), l = op.listaCompras(app.base, app.cfg(), dias, { hoy: app.hoy() });

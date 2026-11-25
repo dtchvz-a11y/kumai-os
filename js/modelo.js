@@ -1,7 +1,7 @@
 // KUMAI OS · modelo de datos (14 entidades de la especificación v1.2, sección 4)
 import { uid, ymd, sumarDias, soloDigitos } from './util.js';
 
-export const VERSION_APP = '4.1';
+export const VERSION_APP = '4.2';
 
 /** Una hoja de Google por entidad. El orden no importa; los nombres sí (son los de las hojas). */
 export const ENTIDADES = [

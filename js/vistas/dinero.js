@@ -11,7 +11,7 @@ const nMes = k => deYmd(k + '-01').toLocaleDateString('es-MX', { month: 'long', 
 
 export function recordatoriosHtml(app) {
   return an.recordatoriosFiscales(app.hoy(), app.cfg().fiscal || {}).map(r => `<div class="alert ${r.urgente ? '' : 'soft'}"><div><b>Fiscal:</b> ${esc(r.texto)}
-    <div><button class="chip" style="margin-top:8px;background:var(--crema)" data-accion="dinero.fiscalHecho" data-clave="${r.clave}" data-mes="${r.mes}">Ya lo hice</button></div></div></div>`).join('');
+    <div><button class="chip" style="margin-top:8px;background:var(--sup)" data-accion="dinero.fiscalHecho" data-clave="${r.clave}" data-mes="${r.mes}">Ya lo hice</button></div></div></div>`).join('');
 }
 
 export function render(app) {
@@ -64,8 +64,8 @@ function formGasto(app) {
     <label for="gCatNueva">O una categoría nueva</label><input id="gCatNueva" placeholder="Se guarda en tu lista">
     <label for="gConcepto">Concepto</label><input id="gConcepto" value="${esc(g.concepto || '')}" placeholder="Contenedores, gasolina, stand…">
     <label for="gProv">Proveedor</label><input id="gProv" value="${esc(g.proveedor || '')}">
-    <label style="text-transform:none;letter-spacing:0;font-size:15px;color:var(--tinta)"><input type="checkbox" id="gFactura" style="width:auto;margin-right:10px" ${g.conFactura ? 'checked' : ''}>Tengo factura a mi RFC</label>
-    <label style="text-transform:none;letter-spacing:0;font-size:15px;color:var(--tinta)"><input type="checkbox" id="gDeducible" style="width:auto;margin-right:10px" ${g.deducible ? 'checked' : ''}>Marcar como deducible</label>
+    <label style="text-transform:none;letter-spacing:0;font-size:15px;color:var(--t1)"><input type="checkbox" id="gFactura" style="width:auto;margin-right:10px" ${g.conFactura ? 'checked' : ''}>Tengo factura a mi RFC</label>
+    <label style="text-transform:none;letter-spacing:0;font-size:15px;color:var(--t1)"><input type="checkbox" id="gDeducible" style="width:auto;margin-right:10px" ${g.deducible ? 'checked' : ''}>Marcar como deducible</label>
     <label for="gComp">Comprobante (folio o nota)</label><input id="gComp" value="${esc(g.comprobante || '')}">
     <div class="smallnote">En RESICO los gastos no bajan el ISR, pero la factura respalda tu costo y su IVA puede acreditarse: pídela siempre que puedas.</div>
     <div class="modal-actions">${g.id ? `<button class="peligro" data-accion="dinero.borrarGasto">Eliminar</button>` : `<button class="secondary" data-accion="app.cerrarModal">Cancelar</button>`}<button class="primary" data-accion="dinero.guardarGasto">Guardar</button></div>`;

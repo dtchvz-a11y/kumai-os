@@ -1,6 +1,6 @@
 // KUMAI OS · service worker: la app abre y funciona sin señal.
 // Al publicar cambios, sube VERSION: el celular descarga todo de nuevo y avisa que hay versión nueva.
-const VERSION = 'kumai-os-4-1';
+const VERSION = 'kumai-os-4-2';
 const ARCHIVOS = [
   './', 'index.html', 'manifest.webmanifest', 'css/kumai.css',
   'fonts/chango-latin-400-normal.woff2', 'fonts/quicksand-latin-500-normal.woff2', 'fonts/quicksand-latin-700-normal.woff2',
