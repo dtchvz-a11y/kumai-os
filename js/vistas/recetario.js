@@ -19,6 +19,10 @@ export function render(app) {
   const u = estado(app);
   let h = `<h2 class="viewtitle">Recetario</h2>
     <div class="seg">${[['sabores', 'Sabores'], ['insumos', 'Insumos'], ['bases', 'Bases']].map(([k, t]) => `<button class="${u.sub === k ? 'on' : ''}" data-accion="recetario.sub" data-sub="${k}">${t}</button>`).join('')}</div>`;
+  // Recetario más nuevo dentro de la app (llega con una actualización): se ofrece revisarlo y aplicarlo.
+  const vIncl = app._semilla && app._semilla.config.recetarioVersion, vApp = app.cfg().recetarioVersion;
+  if (vIncl && vApp && vIncl !== vApp) h += `<div class="alert"><div><b>Recetario v${esc(vIncl)} disponible.</b> Tu app usa la v${esc(vApp)}. Revisa los cambios antes de aplicarlos.<div style="margin-top:8px"><button class="secondary" data-accion="recetario.incluido">Revisar cambios</button></div></div></div>`;
+  else if (!app._semilla) app.semilla().then(s => { if (app.vista === 'recetario' && s.config.recetarioVersion !== app.cfg().recetarioVersion) app.render(); }).catch(() => {});
   if (u.sub === 'sabores') h += saboresHtml(app);
   else if (u.sub === 'insumos') h += insumosHtml(app);
   else h += basesHtml(app);
@@ -75,16 +79,20 @@ function insumosHtml(app) {
 
 function basesHtml(app) {
   const ctx = app.ctx(); let h = '';
-  for (const b of [...ctx.bases.values()]) {
+  const orden = ['base-crema', 'base-grenetina', 'base-soletas', 'base-pastelito'], pos = id => (orden.indexOf(id) + 1) || 99;
+  for (const b of [...ctx.bases.values()].sort((x, y) => pos(x.id) - pos(y.id))) {
     const total = costoBase(b, ctx);
     h += `<div class="taskday"><h3>${esc(b.nombre)} · rinde ${b.rinde} ${esc(b.unidadRinde || '')}${b.rinde === 1 ? '' : 's'}</h3>
       <table class="tabla">${b.insumos.map(l => { const i = ctx.insumos.get(l.insumoId); return `<tr><td>${esc(i ? i.nombre : l.insumoId)}<small>${l.cantidad} ${esc(i ? i.unidad : '')}</small></td><td class="r">${dinero(n2(i ? l.cantidad * i.costoUnitario : 0))}</td></tr>`; }).join('')}
       ${b.ajuste ? `<tr><td>Ajuste del recetario<small>El .md declara un total distinto a la suma de sus renglones.</small></td><td class="r">${dinero(b.ajuste)}</td></tr>` : ''}
       <tr class="total"><td>Total</td><td class="r">${dinero(n2(total))}</td></tr>
       <tr><td>Por ${esc(b.unidadRinde || 'unidad')}${b.id === ID_BASE_SOLETAS ? `<small>${app.cfg().soletasPorMolde} soletas por molde = ${dinero(Math.round(app.cfg().soletasPorMolde * total / b.rinde))}</small>` : ''}</td><td class="r"><b>${dinero(n2(total / b.rinde))}</b></td></tr></table>
+      ${b.enPrueba ? `<div class="mini" style="padding:6px 2px 0"><span class="tag aviso">En prueba</span> ${esc(b.origen || '')}</div>` : ''}
+      ${(b.pasos || []).length ? `<details><summary>Preparación · ${b.pasos.length} pasos</summary><ol>${b.pasos.map(p => `<li>${esc(p)}</li>`).join('')}</ol></details>` : ''}
+      ${(b.notas || []).length ? `<details><summary>Notas</summary><ul>${b.notas.map(n => `<li>${esc(n)}</li>`).join('')}</ul></details>` : ''}
       <div class="acciones"><button class="secondary" data-accion="recetario.base" data-id="${esc(b.id)}">Editar cantidades</button></div></div>`;
   }
-  return h + `<div class="mini">Grenetina: se costea por gramo según lo que pide cada sabor (2, 3 o 4 cubos de 5 g). No va dentro del batch.</div>`;
+  return h + `<div class="mini">Grenetina: cada sabor se costea por gramo según los cubos que pide (2, 3 o 4 de 5 g). No va dentro del batch.</div>`;
 }
 
 // ---------- detalle de un sabor ----------
@@ -95,8 +103,8 @@ function detalleHtml(app, r) {
     return `<tr><td>${canal}<small>con buffer ${cfg.bufferPct}%: ${dinero(n2(b.utilidad))} · ${b.pct}%</small></td><td class="r">${dinero(precio)}</td><td class="r">${dinero(n2(a.utilidad))}</td><td class="r"><b>${a.pct}%</b></td></tr>`;
   };
   return `<h3>#${r.num} ${esc(r.nombre)}</h3>
-    <div><span class="tag ${r.menu === 'operativo' ? 'OP' : ''}">${r.menu === 'operativo' ? 'Menú operativo' : 'Menú de reserva'}</span> <span class="tag">${esc(r.categoria || '')}</span>
-      ${r.validacion ? ' <span class="tag aviso">En validación</span>' : ''}${r.alergeno ? ` <span class="tag aviso">${esc(r.alergeno)}</span>` : ''}${r.archivada ? ' <span class="tag">Archivada</span>' : ''}</div>
+    <div><span class="tag ${r.menu === 'operativo' ? 'OP' : ''}">${r.menu === 'operativo' ? 'Menú operativo' : 'Menú de reserva'}</span> ${r.categoria && !(r.validacion && /validaci/i.test(r.categoria)) ? `<span class="tag">${esc(r.categoria)}</span>` : ''}
+      ${r.edicion ? ` <span class="tag Evento">Edición limitada · ${esc(r.edicion)}</span>` : ''}${r.validacion ? ' <span class="tag aviso">En validación</span>' : ''}${r.alergeno ? ` <span class="tag aviso">${esc(r.alergeno)}</span>` : ''}${r.archivada ? ' <span class="tag">Archivada</span>' : ''}</div>
     ${r.descripcion ? `<p class="mini" style="margin:10px 0 0">${esc(r.descripcion)}</p>` : ''}
     <div class="grid2" style="margin-top:14px"><div class="stat"><div class="n">${dinero(c.molde)}</div><div class="l">Costo por molde</div></div>
       <div class="stat"><div class="n">${dinero(Math.round(c.rebanada))}</div><div class="l">Por rebanada · ${c.rebanadas} por molde</div></div></div>
@@ -272,7 +280,7 @@ export const acciones = {
       <label>Cantidad por tanda</label>
       ${b.insumos.map((l, i) => { const ins = ctx.insumos.get(l.insumoId); return `<div class="stockfila"><div><b>${esc(ins ? ins.nombre : l.insumoId)}</b><span>${esc(ins ? ins.unidad : '')}</span></div><input type="number" inputmode="decimal" data-linea="${i}" value="${l.cantidad}"></div>`; }).join('')}
       <label for="bAjuste">Ajuste $ (diferencia declarada en el recetario)</label><input id="bAjuste" type="number" inputmode="decimal" step="0.01" value="${b.ajuste || 0}">
-      <div class="smallnote">El molde de 10×40×6 usa ${b.id === ID_BASE_CREMA ? '1 bote' : app.cfg().soletasPorMolde + ' soletas'}. Costo actual por ${esc(b.unidadRinde)}: ${dinero(n2(costoUnidadBase(b, ctx)))}.</div>
+      <div class="smallnote">${b.id === ID_BASE_CREMA ? 'El molde de 10×40×6 usa 1 bote. ' : b.id === ID_BASE_SOLETAS ? `El molde de 10×40×6 usa ${app.cfg().soletasPorMolde} soletas. ` : ''}Costo actual por ${esc(b.unidadRinde)}: ${dinero(n2(costoUnidadBase(b, ctx)))}.</div>
       <div class="modal-actions"><button class="secondary" data-accion="app.cerrarModal">Cancelar</button><button class="primary" data-accion="recetario.guardarBase">Guardar</button></div>`);
   },
   async guardarBase(app) {
@@ -290,6 +298,12 @@ export const acciones = {
     }
     const n = d.cambios.length; app.ui.dif = null;
     app.cerrarModal(); app.render(); app.toast(`Recetario actualizado: ${n} ${n === 1 ? 'cambio' : 'cambios'}`);
+  },  async incluido(app) {
+    const r = await fetch('datos/recetario-semilla.json'), j = await r.json();
+    const leido = j.leido, semilla = construirSemilla(leido), b = app.base;
+    const dif = compararConActual(semilla, { insumos: b.todos('insumos'), recetas: b.todos('recetas'), productos: b.todos('productos'), config: b.get('config', 'config') });
+    app.ui.dif = { ...dif, version: leido.version, sabores: leido.recetas.length, archivo: 'el recetario incluido en la app' };
+    app.modal(reporteHtml(app));
   },
 };
 

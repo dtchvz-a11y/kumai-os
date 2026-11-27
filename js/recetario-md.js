@@ -40,6 +40,17 @@ export function leerRecetario(md) {
     cremaBase: null, grenetina: null, soletas: null, precios: {}, recetas: [], resumen: {}, avisos,
   };
 
+  /** Pasos numerados ("**1. **texto") desde la línea `desde` hasta que `fin(l)` sea verdadero. */
+  const pasosDesde = (desde, fin) => {
+    const ps = [];
+    if (desde < 0) return ps;
+    for (let i = desde + 1; i < lineas.length && !fin(lineas[i]); i++) {
+      const m = lineas[i].match(/^\*\*(\d+)\.\s*\*\*(.*)$/);
+      if (m) ps.push(limpia(m[2]));
+    }
+    return ps;
+  };
+
   // ---------- batch de crema base ----------
   const iBatch = lineas.findIndex(l => /^## Batch de crema base/.test(l));
   if (iBatch >= 0) {
@@ -55,13 +66,38 @@ export function leerRecetario(md) {
       if (!q || !costo) { avisos.push(`Batch de crema: no pude leer la fila "${limpia(c[0])}"`); continue; }
       insumos.push({ nombre: limpia(c[0]).replace(/\s*\(.*\)$/, ''), cantidad: q.cantidad, unidad: q.unidad, costo: costo.min });
     }
-    out.cremaBase = { rinde, insumos, total };
+    const iProc = lineas.findIndex((l, i) => i > iBatch && /^\*\*Procedimiento del batch\*\*/.test(l));
+    out.cremaBase = { rinde, insumos, total, pasos: pasosDesde(iProc, l => /^#{1,2} /.test(l)) };
   } else avisos.push('No encontré la tabla del batch de crema base.');
 
   // ---------- grenetina ----------
   const mg = md.match(/Grenetina \((\d+) cubos, (\d+) g\)\s*\|\s*\**\$(\d+)/);
   if (mg) out.grenetina = { gramos: Number(mg[2]), costo: Number(mg[3]), cubos: Number(mg[1]) };
   else avisos.push('No encontré el costo de la grenetina (tabla "Economía del batch").');
+
+  // ---------- grenetina en cubos (preparación) ----------
+  const iGc = lineas.findIndex(l => /^## Grenetina en cubos/.test(l));
+  if (iGc >= 0) {
+    const fin = l => /^#{1,2} /.test(l);
+    const pasos = [], notas = [], porCubos = [];
+    let lote = null, cubos = null;
+    for (let i = iGc + 1; i < lineas.length && !fin(lineas[i]); i++) {
+      const l = lineas[i], t = limpia(l);
+      let m;
+      if ((m = l.match(/^\*\*(\d+)\.\s*\*\*(.*)$/))) { pasos.push(limpia(m[2])); continue; }
+      if (/^Ratio:/.test(t)) { notas.push(t); continue; }
+      if (/^•/.test(t)) { notas.push(t.replace(/^•\s*/, '')); continue; }
+      if (/^\*\*[^*]+\.\*\*/.test(l.trim()) && t.length > 40) { notas.push(t); continue; } // párrafo con entrada en negritas
+      if (!esFilaTabla(l)) continue;
+      const c = celdas(l).map(limpia);
+      if (/Concepto|Cubos/.test(c[0]) && /Cantidad|Grenetina/.test(c[1])) continue;
+      if (/^Lote/.test(c[0]) && (m = c[1].match(/(\d+) g de grenetina \+ (\d+) ml de agua/))) lote = { grenetinaG: Number(m[1]), aguaMl: Number(m[2]) };
+      else if (/^Charola/.test(c[0]) && (m = c[1].match(/(\d+) cavidades/))) cubos = Number(m[1]);
+      else if ((m = c[0].match(/^(\d+) cubos?/))) porCubos.push(`${c[0]} (${c[1]}): ${c[2]}`);
+      else if (c[0] && c[1]) notas.push(`${c[0]}: ${c[1]}`);
+    }
+    out.grenetinaCubos = { lote, cubos: cubos || 20, pasos, notas, porCubos };
+  }
 
   // ---------- soletas ----------
   const iSol = lineas.findIndex(l => /^# Soletillas KUMAI/.test(l));
@@ -79,7 +115,8 @@ export function leerRecetario(md) {
       const q = leerCantidad(c[1]);
       if (q && costo) insumos.push({ nombre, cantidad: q.cantidad, unidad: q.unidad, costo: costo.min });
     }
-    out.soletas = { rinde, porMolde, insumos, total };
+    const iProc = lineas.findIndex((l, i) => i > iSol && /^\*\*Procedimiento\*\*/.test(l));
+    out.soletas = { rinde, porMolde, insumos, total, pasos: pasosDesde(iProc, l => /^\*\*Almacenamiento\*\*|^# /.test(l)) };
   } else avisos.push('No encontré la sección de soletillas.');
 
   // ---------- precios de lista ----------
@@ -123,15 +160,24 @@ export function leerRecetario(md) {
     const c = celdas(lineas[i]);
     const m = limpia(c[0]).match(/^(\d+)\.\s+(.+?)\s*(?:🆕)?$/u);
     if (!m || c.length < 5) continue;
+    const ed = m[2].match(/\(edición limitada ([^)]+)\)/i);
     out.resumen[Number(m[1])] = {
-      nombre: m[2].trim(), costoMolde: leerCosto(c[1]), costoRebanada: leerCosto(c[2]),
+      nombre: m[2].replace(/🆕/gu, '').replace(/\(edición limitada [^)]+\)/i, '').replace(/\s+/g, ' ').trim(), edicion: ed ? ed[1].trim() : null, costoMolde: leerCosto(c[1]), costoRebanada: leerCosto(c[2]),
       precio: (leerCosto(c[3]) || {}).min, margen: limpia(c[4]),
     };
   }
 
   // ---------- recetas ----------
   let menu = null, categoria = null, r = null, seccion = null;
-  const cerrar = () => { if (r) { out.recetas.push(r); r = null; } };
+  const cerrar = () => {
+    if (!r) return;
+    // "Vida de venta: 3 días" en las notas manda sobre la regla general del motor.
+    const vv = r.notas.join(' ').match(/Vida de venta:\s*(\d+)\s*d[ií]as/i);
+    if (vv) r.vidaVentaDias = Number(vv[1]);
+    if (r.subreceta && r.subreceta.filas.length) r.notas.unshift(`${r.subreceta.titulo}: ${r.subreceta.filas.join(' · ')}`);
+    delete r.subreceta;
+    out.recetas.push(r); r = null;
+  };
   for (const l of lineas) {
     if (/^# /.test(l)) {
       const mr = l.match(/^# (\d+)\.\s+(.*)$/);
@@ -143,7 +189,7 @@ export function leerRecetario(md) {
           menu, categoria: menu === 'operativo' ? (familia[num] || 'Operativo') : categoria,
           descripcion: '', componentes: [], grenetinaG: null, pesoRango: null, sinBatch: false, usaSoletas: false,
           precio: null, declarado: null, pasos: [], notas: [],
-          validacion: enValidacion.has(num), alergeno: alergenos[num] || null,
+          validacion: enValidacion.has(num), alergeno: alergenos[num] || null, edicion: (out.resumen[num] || {}).edicion || null,
         };
         seccion = null;
         continue;
@@ -159,6 +205,16 @@ export function leerRecetario(md) {
     if (!r) continue;
 
     if (/^\*\*Ingredientes y Costos\*\*/.test(l)) { seccion = 'ing'; continue; }
+    // Sub-receta antes de los ingredientes (p. ej. la pasta de speculoos del #28): va a notas.
+    if (seccion === null) {
+      const ms = l.match(/^\*\*([^*]+)\*\*\s*(?:—\s*(.*))?$/);
+      if (ms && !/Procedimiento|Resumen/.test(ms[1])) { r.subreceta = { titulo: limpia(ms[1]), filas: [] }; continue; }
+      if (r.subreceta && esFilaTabla(l)) {
+        const c = celdas(l).map(limpia);
+        if (c[0] && !/Ingrediente|^-+$/.test(c[0]) && !/^-/.test(c[0])) r.subreceta.filas.push(c.slice(0, 3).filter(Boolean).join(' '));
+        continue;
+      }
+    }
     if (/^\*\*Procedimiento\*\*/.test(l)) { seccion = 'proc'; continue; }
     if (/^\*\*Resumen de Costos\*\*/.test(l)) { seccion = 'res'; continue; }
 

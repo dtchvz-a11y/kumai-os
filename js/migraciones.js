@@ -58,6 +58,19 @@ export async function migrar(base, { semilla = null } = {}) {
       if (otros.length && await base.sembrar('productos', otros)) hechos.push('otras líneas');
     } catch (e) { /* sin semilla a la mano (sin conexión la primera vez): se intenta en el siguiente arranque */ }
   }
+  // 7. Bases nuevas (27-nov-2026): grenetina en cubos (recetario v4.3.1) y pastelito de churro (ficha v0.3). Una sola vez.
+  if (semilla && base.get('config', 'config')) {
+    const faltan = ['base-grenetina', 'base-pastelito'].filter(id => !base.todos('recetas').some(r => r.id === id));
+    if (faltan.length) {
+      try {
+        const s = await semilla(), nuevas = s.recetas.filter(r => faltan.includes(r.id));
+        const ids = new Set(nuevas.flatMap(r => r.insumos.map(l => l.insumoId)));
+        const ins = s.insumos.filter(i => ids.has(i.id) && !base.todos('insumos').some(x => x.id === i.id));
+        if (ins.length) await base.sembrar('insumos', ins);
+        if (nuevas.length && await base.sembrar('recetas', nuevas)) hechos.push('bases nuevas');
+      } catch (e) { /* se intenta en el siguiente arranque */ }
+    }
+  }
   return hechos;
 }
 
